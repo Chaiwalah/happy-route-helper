@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from 'react';
@@ -77,9 +78,15 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Send data to parent component
       onDataParsed(ordersWithDistances);
       
+      // Create a more specific description about missing fields
+      let description = `Loaded ${parsedData.length} orders`;
+      if (ordersWithMissingFields.length > 0) {
+        description += `, ${ordersWithMissingFields.length} with incomplete data`;
+      }
+      
       toast({
         title: "File processed successfully",
-        description: `Loaded ${parsedData.length} orders, ${ordersWithMissingFields.length} with missing data`,
+        description,
       });
     } catch (error) {
       console.error('Error processing file:', error);

@@ -37,6 +37,11 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     return []; // Return empty array if no headers
   }
   
+  // Check if specific columns exist in the CSV
+  const itemsColumnExists = headers.some(header => 
+    ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
+  );
+  
   // Parse each line into an object
   const validOrders = lines.slice(1)
     .map((line, index) => {
@@ -159,19 +164,22 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         missingFields.push('actualDeliveryTime');
       }
       
-      // Check for items
-      const items = 
-        rawRow["Items"] || 
-        rawRow["Items Description"] || 
-        rawRow["Product"] || 
-        rawRow["Products"] || 
-        rawRow["items"] || 
-        "";
-      
-      if (items) {
-        order.items = items;
-      } else {
-        missingFields.push('items');
+      // Check for items ONLY if the column exists in the CSV
+      if (itemsColumnExists) {
+        const items = 
+          rawRow["Items"] || 
+          rawRow["Items Description"] || 
+          rawRow["Item Description"] || 
+          rawRow["Product"] || 
+          rawRow["Products"] || 
+          rawRow["items"] || 
+          "";
+        
+        if (items) {
+          order.items = items;
+        } else {
+          missingFields.push('items');
+        }
       }
       
       // Notes field
@@ -271,6 +279,7 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'actual delivery time': 'actualDeliveryTime',
     'items': 'items',
     'items description': 'items',
+    'item description': 'items',
     'product': 'items',
     'products': 'items',
     'notes': 'notes',
