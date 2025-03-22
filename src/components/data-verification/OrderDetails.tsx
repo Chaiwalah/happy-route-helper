@@ -38,6 +38,7 @@ export function OrderDetails({
   suggestedDrivers,
   getFieldValidationStatus
 }: OrderDetailsProps) {
+  // Display a message if no order is selected
   if (!selectedOrder) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-10">
@@ -71,6 +72,14 @@ export function OrderDetails({
   const dropoffValue = selectedOrder.dropoff || '';
   const readyTimeValue = selectedOrder.exReadyTime || '';
   const deliveryTimeValue = selectedOrder.exDeliveryTime || '';
+  
+  // Debug the field values
+  console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
+    tripNumber: tripNumberValue || 'EMPTY',
+    driver: driverValue || 'EMPTY',
+    editingField: editingField || 'NONE',
+    fieldValue: fieldValue || 'EMPTY'
+  });
   
   return (
     <div className="space-y-4">

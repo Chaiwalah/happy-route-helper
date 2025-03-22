@@ -1,14 +1,13 @@
 
 "use client"
 
-import { useState } from 'react';
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { DeliveryOrder } from '@/utils/csvParser';
-import { AlertCircle, CheckCircle } from 'lucide-react';
-import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { AlertCircle, CheckCircle, Truck } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-export interface VerificationSidebarProps {
+interface VerificationSidebarProps {
   ordersRequiringVerification: DeliveryOrder[];
   verifiedOrders: DeliveryOrder[];
   selectedOrderId: string | null;
@@ -17,77 +16,111 @@ export interface VerificationSidebarProps {
 }
 
 export function VerificationSidebar({
-  ordersRequiringVerification = [],
-  verifiedOrders = [],
+  ordersRequiringVerification,
+  verifiedOrders,
   selectedOrderId,
   onOrderSelect,
-  ordersWithTripNumberIssues = []
+  ordersWithTripNumberIssues
 }: VerificationSidebarProps) {
+  // Determine if an order has issues with its trip number
+  const hasTripNumberIssue = (order: DeliveryOrder) => {
+    return order.missingFields.includes('tripNumber') || 
+           !order.tripNumber || 
+           order.tripNumber.trim() === '';
+  };
+  
+  // Determine if an order has issues with its driver assignment
+  const hasDriverIssue = (order: DeliveryOrder) => {
+    return order.missingFields.includes('driver') || 
+           !order.driver || 
+           order.driver.trim() === '' ||
+           order.driver === 'Unassigned';
+  };
+
   return (
-    <div className="col-span-1 border rounded-lg p-3 bg-muted/20">
-      <h3 className="text-sm font-medium mb-2">Orders Requiring Verification</h3>
-      <ScrollArea className="h-[300px]">
-        <div className="space-y-2">
-          {ordersRequiringVerification && ordersRequiringVerification.length > 0 ? (
-            ordersRequiringVerification.map((order, index) => (
-              <div 
-                key={order.id} 
-                className={`p-2 border rounded-md cursor-pointer transition-colors ${
-                  selectedOrderId === order.id 
-                    ? 'bg-primary/10 border-primary' 
-                    : 'hover:bg-muted'
-                }`}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium text-lg">Orders Requiring Verification</h3>
+        <span className="text-sm text-muted-foreground">
+          {ordersRequiringVerification.length} {ordersRequiringVerification.length === 1 ? 'order' : 'orders'}
+        </span>
+      </div>
+      
+      {ordersWithTripNumberIssues.length > 0 && (
+        <div className="text-sm bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 p-3 rounded-md">
+          <div className="flex items-center mb-1 font-medium">
+            <AlertCircle className="h-4 w-4 mr-1" />
+            Missing Trip Numbers
+          </div>
+          <p>
+            {ordersWithTripNumberIssues.length} {ordersWithTripNumberIssues.length === 1 ? 'order needs' : 'orders need'} trip number verification.
+          </p>
+        </div>
+      )}
+      
+      {ordersRequiringVerification.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
+          <p>All orders have been verified</p>
+        </div>
+      ) : (
+        <ScrollArea className="h-[400px] pr-4">
+          <div className="space-y-2">
+            {ordersRequiringVerification.map((order) => (
+              <div
+                key={order.id}
+                className={cn(
+                  "border rounded-md p-3 cursor-pointer transition-colors",
+                  selectedOrderId === order.id
+                    ? "bg-primary/10 border-primary/50"
+                    : "hover:bg-muted"
+                )}
                 onClick={() => onOrderSelect(order.id)}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{order.id}</span>
-                  {(!order.tripNumber || order.tripNumber.trim() === '' || 
-                    (order.missingFields && order.missingFields.includes('tripNumber'))) ? (
-                    <Badge variant="destructive" className="ml-2">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Missing Trip #
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="ml-2">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Trip #{order.tripNumber}
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Driver: {order.driver || 'Unassigned'}
-                </div>
-                {order.missingFields && order.missingFields.length > 0 && (
-                  <div className="mt-1 text-xs text-red-500">
-                    Missing: {order.missingFields.join(', ')}
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-medium">{order.id}</div>
+                  <div className="flex space-x-1">
+                    {hasTripNumberIssue(order) && (
+                      <Badge variant="outline" className="text-amber-500 border-amber-500 bg-amber-50 dark:bg-amber-950/30">
+                        Trip #
+                      </Badge>
+                    )}
+                    {hasDriverIssue(order) && (
+                      <Badge variant="outline" className="text-blue-500 border-blue-500 bg-blue-50 dark:bg-blue-950/30">
+                        Driver
+                      </Badge>
+                    )}
                   </div>
-                )}
+                </div>
+                
+                <div className="text-sm">
+                  <div className="flex items-center text-muted-foreground">
+                    <Truck className="h-3 w-3 mr-1" />
+                    {order.driver ? order.driver : <span className="italic">Driver Unassigned</span>}
+                  </div>
+                  <div className="flex items-start mt-1">
+                    <div className="flex-1 truncate text-muted-foreground">
+                      {order.dropoff || <span className="italic">No dropoff address</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-xs">
+                    <div>
+                      {order.tripNumber ? (
+                        <span className="font-mono">{order.tripNumber}</span>
+                      ) : (
+                        <span className="italic text-amber-500">Missing Trip Number</span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {order.exDeliveryTime || ''}
+                    </div>
+                  </div>
+                </div>
               </div>
-            ))
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <CheckCircle className="mx-auto h-8 w-8 mb-2 text-green-500" />
-              All orders have complete data
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-      
-      <div className="mt-3">
-        <div className="text-xs text-muted-foreground mb-1">Verification summary:</div>
-        <div className="flex justify-between text-sm">
-          <span>Total orders:</span>
-          <span className="font-medium">{verifiedOrders ? verifiedOrders.length : 0}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span>Missing trip numbers:</span>
-          <span className="font-medium">{ordersWithTripNumberIssues ? ordersWithTripNumberIssues.length : 0}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span>Requiring verification:</span>
-          <span className="font-medium">{ordersRequiringVerification ? ordersRequiringVerification.length : 0}</span>
-        </div>
-      </div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
     </div>
   );
 }

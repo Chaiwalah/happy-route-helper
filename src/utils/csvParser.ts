@@ -395,7 +395,7 @@ const parseCSVLine = (line: string): string[] => {
   return result;
 };
 
-// Map CSV headers to our DeliveryOrder properties
+// Enhanced mapping function to ensure consistent field extraction
 const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
   if (!header) return null;
   
@@ -403,6 +403,7 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'order id': 'id',
     'driver': 'driver',
     'driver name': 'driver',
+    'courier': 'driver', // Added courier mapping
     'pickup': 'pickup',
     'pickup address': 'pickup',
     'pickup location': 'pickup',
