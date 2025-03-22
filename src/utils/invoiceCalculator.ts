@@ -60,14 +60,15 @@ export const generateInvoice = (
     // Additional costs (can be expanded later)
     let addOns = 0;
     
-    // Add extra charge for missing address information
-    if (order.missingAddress) {
-      addOns += 5; // $5 surcharge for orders with incomplete address data
-    }
-    
-    // Add extra charge for orders with missing time windows
-    if (!order.timeWindowStart && !order.timeWindowEnd) {
-      addOns += 2.50; // $2.50 surcharge for orders without delivery time windows
+    // Add a single surcharge based on the number of missing fields
+    if (order.missingFields.length > 0) {
+      // Base surcharge of $5 for any missing fields
+      addOns += 5;
+      
+      // Add $0.50 for each additional missing field beyond the first
+      if (order.missingFields.length > 1) {
+        addOns += (order.missingFields.length - 1) * 0.50;
+      }
     }
     
     const totalCost = baseCost + distanceCost + addOns;
@@ -129,34 +130,33 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
     driverOrderCounts[driver] = (driverOrderCounts[driver] || 0) + 1;
   });
   
-  // Check each order for potential issues
+  // Check each order for potential issues - ONE issue per order with missing fields
   orders.forEach(order => {
     const driver = order.driver || 'Unassigned';
     
-    // Missing address issue - only add once per order
-    if (order.missingAddress === true) {
+    // Consolidate missing fields into a single issue
+    if (order.missingFields.length > 0) {
+      // Format the list of missing fields for human reading
+      const missingFieldsFormatted = order.missingFields
+        .map(field => {
+          switch(field) {
+            case 'address': return 'delivery address';
+            case 'timeWindow': return 'time window';
+            case 'pickup': return 'pickup location';
+            case 'items': return 'items';
+            default: return field;
+          }
+        })
+        .join(', ');
+      
       issues.push({
         orderId: order.id,
         driver,
-        message: 'Missing address data',
-        details: `Order ${order.id} is missing complete address information.`,
+        message: `Incomplete order data`,
+        details: `Order ${order.id} is missing: ${missingFieldsFormatted}.`,
         severity: 'warning'
       });
     }
-    
-    // Missing time window
-    if (!order.timeWindowStart && !order.timeWindowEnd) {
-      issues.push({
-        orderId: order.id,
-        driver,
-        message: 'Missing time window',
-        details: `No delivery time window specified for order ${order.id}.`,
-        severity: 'warning'
-      });
-    }
-    
-    // Additional issues can be added here but should avoid duplicating same issue type
-    // for the same order
   });
   
   // Check for drivers with high load (more than 10 orders)
@@ -171,6 +171,12 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
       });
     }
   });
+  
+  // Debug check to ensure we don't have more issues than orders (excluding driver load issues)
+  const missingFieldIssues = issues.filter(issue => issue.message === 'Incomplete order data');
+  if (missingFieldIssues.length > orders.length) {
+    console.warn(`Warning: More missing field issues (${missingFieldIssues.length}) than total orders (${orders.length})`);
+  }
   
   return issues;
 };

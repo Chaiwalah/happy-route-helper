@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -38,18 +37,27 @@ const Index = () => {
     if (parsedOrders.length > 0) {
       setActiveTab('orders');
       
-      // Count missing addresses
-      const missingAddresses = parsedOrders.filter(order => order.missingAddress === true).length;
+      // Count orders with missing fields
+      const ordersWithMissingFields = parsedOrders.filter(order => order.missingFields.length > 0).length;
+      const ordersWithMissingAddresses = parsedOrders.filter(order => order.missingFields.includes('address')).length;
       
       toast({
         title: "Upload successful",
-        description: `${parsedOrders.length} orders loaded successfully. ${missingAddresses > 0 ? `${missingAddresses} with missing address data.` : ''}`,
+        description: `${parsedOrders.length} orders loaded successfully. ${
+          ordersWithMissingFields > 0 ? `${ordersWithMissingFields} with incomplete data.` : ''
+        }`,
       });
     }
     
     // Check for potential issues
     const detectedIssues = detectIssues(parsedOrders);
     setIssues(detectedIssues);
+    
+    // Validate that issue count doesn't exceed order count
+    const missingDataIssues = detectedIssues.filter(issue => issue.message === 'Incomplete order data');
+    if (missingDataIssues.length > parsedOrders.length) {
+      console.error("Error: More missing data issues than total orders. This should not happen.");
+    }
     
     if (detectedIssues.length > 0) {
       toast({

@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -72,12 +71,16 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Calculate distances for each route
       const ordersWithDistances = await calculateDistances(parsedData);
       
+      // Count orders with missing fields
+      const ordersWithMissingFields = ordersWithDistances.filter(o => o.missingFields.length > 0);
+      const missingAddresses = ordersWithDistances.filter(o => o.missingFields.includes('address')).length;
+      
       // Send data to parent component
       onDataParsed(ordersWithDistances);
       
       toast({
         title: "File processed successfully",
-        description: `Loaded ${parsedData.length} orders`,
+        description: `Loaded ${parsedData.length} orders, ${ordersWithMissingFields.length} with missing data`,
       });
     } catch (error) {
       console.error('Error processing file:', error);

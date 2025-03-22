@@ -1,4 +1,3 @@
-
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -9,7 +8,8 @@ export type DeliveryOrder = {
   items?: string;
   notes?: string;
   estimatedDistance?: number;
-  missingAddress?: boolean; // New flag for tracking missing address
+  missingAddress?: boolean; // Keeping for backward compatibility
+  missingFields: string[]; // New array to track all missing fields
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
@@ -38,17 +38,12 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // Skip empty lines
       return {
         id: `order-${index + 1}`,
-        missingAddress: true, // Empty lines have no address
+        missingAddress: true,
+        missingFields: ['address'], // Initialize with address missing
       };
     }
     
     const values = parseCSVLine(line);
-    
-    // Create object with default values for all fields
-    const order: DeliveryOrder = {
-      id: `order-${index + 1}`, // Add a default ID
-      missingAddress: true, // Default to true, will set to false if we find address
-    };
     
     // First pass: extract all raw values into a row object
     const rawRow: Record<string, string> = {};
@@ -57,6 +52,9 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         rawRow[header.trim()] = values[i] || '';
       }
     });
+    
+    // Initialize missing fields array
+    const missingFields: string[] = [];
     
     // Handle address concatenation for delivery address
     const addressLine = rawRow["Delivery Address 1"] || rawRow["delivery address 1"] || "";
@@ -68,10 +66,19 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       .filter(Boolean)
       .join(", ");
     
-    // If we found address components, set the dropoff to the full address
+    // Create object with default values for all fields
+    const order: DeliveryOrder = {
+      id: `order-${index + 1}`, // Add a default ID
+      missingAddress: true, // Default to true, will set to false if we find address
+      missingFields: [], // Initialize empty array
+    };
+    
+    // If we have a full address, set the dropoff to the full address
     if (fullAddress.trim() !== "") {
       order.dropoff = fullAddress;
       order.missingAddress = false; // We have an address, so set to false
+    } else {
+      order.missingFields.push('address');
     }
     
     // Second pass: map all other fields normally
@@ -83,6 +90,21 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         }
       }
     });
+    
+    // Check for time window
+    if (!order.timeWindowStart && !order.timeWindowEnd) {
+      order.missingFields.push('timeWindow');
+    }
+    
+    // Check for items field
+    if (!order.items || order.items.trim() === '') {
+      order.missingFields.push('items');
+    }
+    
+    // Check for pickup field
+    if (!order.pickup || order.pickup.trim() === '') {
+      order.missingFields.push('pickup');
+    }
     
     // Add a random estimated distance if not provided (and if we have any location data)
     if ((order.pickup || order.dropoff) && !order.estimatedDistance) {
