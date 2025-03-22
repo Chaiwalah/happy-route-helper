@@ -1,7 +1,7 @@
 
 import { DeliveryOrder } from './csvParser';
 import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings, DriverSummary } from './invoiceTypes';
-import { organizeOrdersIntoRoutes } from './routeOrganizer';
+import { organizeOrdersIntoRoutes, removeOrdersWithNoiseTrips } from './routeOrganizer';
 import { calculateMultiStopRouteDistance } from './routeDistanceCalculator';
 import { calculateInvoiceCosts } from './invoicePricing';
 import { generateDriverSummaries } from './driverSummaryGenerator';
@@ -31,8 +31,11 @@ export const generateInvoice = async (
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const timestamp = today.toISOString();
   
+  // Remove orders with noise/test trip numbers first
+  const cleanedOrders = removeOrdersWithNoiseTrips(orders);
+  
   // Organize orders into routes by TripNumber, driver, and date
-  const routes = organizeOrdersIntoRoutes(orders);
+  const routes = organizeOrdersIntoRoutes(cleanedOrders);
   
   // Create invoice items based on routes
   const items: InvoiceItem[] = [];
@@ -42,14 +45,24 @@ export const generateInvoice = async (
     const routeOrders = route.orders;
     
     // Explicitly determine if it's a single order or multi-stop route
-    const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
-    const stops = routeOrders.length;
+    const routeType = route.isMultiStop ? 'multi-stop' : 'single';
+    
+    // Count total stops excluding pump pickups for billing purposes
+    const regularStops = routeOrders.filter(order => !order.isPumpPickup).length;
+    const pumpPickupCount = routeOrders.filter(order => order.isPumpPickup).length;
+    const hasPumpPickups = pumpPickupCount > 0;
     
     // Calculate total route distance using Mapbox Directions API for multi-stop routes
     const totalDistance = await calculateMultiStopRouteDistance(routeOrders);
     
-    // Apply billing logic with correct formulas
-    const { baseCost, addOns, totalCost } = calculateInvoiceCosts(routeType, totalDistance, stops);
+    // Apply billing logic with correct formulas - handle pump pickup orders differently
+    const { baseCost, addOns, totalCost } = calculateInvoiceCosts(
+      routeType, 
+      totalDistance, 
+      routeOrders.length,
+      hasPumpPickups,
+      pumpPickupCount
+    );
     
     // Concatenate all order IDs into a single string
     const combinedOrderId = routeOrders.map(order => order.id).join(', ');
@@ -92,7 +105,10 @@ export const generateInvoice = async (
       pickup,
       dropoff,
       distance: totalDistance,
-      stops,
+      stops: routeOrders.length, // Total stops including pump pickups
+      billableStops: regularStops, // Only count non-pump pickup stops for display
+      hasPumpPickups: hasPumpPickups,
+      pumpPickupCount: pumpPickupCount,
       routeType,
       baseCost,
       addOns,

@@ -1,4 +1,3 @@
-
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -17,6 +16,8 @@ export type DeliveryOrder = {
   missingAddress?: boolean;      // Keeping for backward compatibility
   missingFields: string[];       // Array to track all missing fields
   tripNumber?: string;           // Added TripNumber field for route batching
+  orderType?: string;            // Type of order (e.g. "PUMP_ONLY", "DELIVERY")
+  isPumpPickup?: boolean;        // Flag to identify pump pickup orders
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
@@ -318,6 +319,44 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // Set the missing fields in the order
       order.missingFields = missingFields;
       
+      // Check for order type indicators (pump pickup, delivery, etc.)
+      const orderTypeField = 
+        rawRow["Order Type"] || 
+        rawRow["Type"] || 
+        rawRow["Service Type"] || 
+        "";
+      
+      if (orderTypeField) {
+        order.orderType = orderTypeField.trim();
+        
+        // Check if this is a pump pickup order based on order type
+        if (orderTypeField.trim().toLowerCase().includes("pump") || 
+            orderTypeField.trim().toLowerCase().includes("pickup only")) {
+          order.isPumpPickup = true;
+        }
+      }
+      
+      // Additional detection for pump pickup orders via notes or items fields
+      const pumpKeywords = ['pump pickup', 'pump only', 'pickup pump', 'pump return'];
+      
+      // Check notes field for pump pickup indicators
+      if (order.notes && pumpKeywords.some(keyword => 
+        order.notes?.toLowerCase().includes(keyword))) {
+        order.isPumpPickup = true;
+        if (!order.orderType) {
+          order.orderType = "PUMP_ONLY";
+        }
+      }
+      
+      // Check items field for pump pickup indicators
+      if (order.items && pumpKeywords.some(keyword => 
+        order.items?.toLowerCase().includes(keyword))) {
+        order.isPumpPickup = true;
+        if (!order.orderType) {
+          order.orderType = "PUMP_ONLY";
+        }
+      }
+      
       return order;
     })
     .filter(Boolean); // Filter out any null values (skipped noise rows)
@@ -400,4 +439,3 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
   const normalizedHeader = header.toLowerCase().trim();
   return headerMap[normalizedHeader] || null;
 };
-

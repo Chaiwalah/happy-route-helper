@@ -1,6 +1,7 @@
 
 import { DeliveryOrder } from './csvParser';
 import { Issue, InvoiceGenerationSettings } from './invoiceTypes';
+import { isNoiseOrTestTripNumber } from './routeOrganizer';
 
 export const detectIssues = (
   orders: DeliveryOrder[], 
@@ -33,6 +34,22 @@ export const detectIssues = (
       console.log(`Order ${order.id} (${orderNum}): Trip Number = "${order.tripNumber || 'N/A'}", Driver = "${order.driver || 'Unassigned'}"`);
     }
   });
+  
+  // Detect noise/test trip numbers
+  const ordersWithNoiseTrips = orders.filter(order => 
+    order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)
+  );
+  
+  // Add a global issue if there are orders with noise trip numbers
+  if (ordersWithNoiseTrips.length > 0) {
+    issues.push({
+      orderId: 'multiple',
+      driver: 'All',
+      message: 'Orders with test/noise trip numbers',
+      details: `There are ${ordersWithNoiseTrips.length} orders with test or noise trip numbers (e.g., "TEST", "24", "25"). These will be excluded from invoice generation.`,
+      severity: 'warning'
+    });
+  }
   
   // Check each order for potential issues - ONE issue per order with missing fields
   orders.forEach(order => {
@@ -80,6 +97,17 @@ export const detectIssues = (
         message: 'Missing trip number',
         details: `Order ${order.id} has no trip number assigned, which may affect route organization and invoice generation.`,
         severity: 'warning'
+      });
+    }
+    
+    // Flag orders with noise/test trip numbers
+    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
+      issues.push({
+        orderId: order.id,
+        driver,
+        message: 'Test/noise trip number',
+        details: `Order ${order.id} has a test or noise trip number "${order.tripNumber}" and will be excluded from invoice generation.`,
+        severity: 'info'
       });
     }
     
