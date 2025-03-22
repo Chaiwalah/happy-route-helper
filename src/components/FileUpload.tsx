@@ -72,7 +72,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Calculate distances for each route - this will use CSV distance if available
       const ordersWithDistances = await calculateDistances(parsedData);
       
-      // Count orders with missing fields
+      // Count orders with missing fields - only count if they have missing fields
       const ordersWithMissingFields = ordersWithDistances.filter(o => o.missingFields.length > 0);
       
       // Send data to parent component

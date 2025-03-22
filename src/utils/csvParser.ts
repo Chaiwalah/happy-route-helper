@@ -1,3 +1,4 @@
+
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -37,15 +38,39 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     return []; // Return empty array if no headers
   }
   
-  // Check if specific columns exist in the CSV
-  const itemsColumnExists = headers.some(header => 
-    ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
-  );
-  
-  // Check if distance column exists
-  const distanceColumnExists = headers.some(header => 
-    ['distance', 'miles', 'mileage', 'total distance'].includes(header.toLowerCase())
-  );
+  // Check which columns exist in the CSV
+  const columnsExist = {
+    items: headers.some(header => 
+      ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
+    ),
+    distance: headers.some(header => 
+      ['distance', 'miles', 'mileage', 'total distance'].includes(header.toLowerCase())
+    ),
+    pickup: headers.some(header => 
+      ['pickup address 1', 'pickup location', 'pickup address', 'pickup'].includes(header.toLowerCase())
+    ),
+    dropoff: headers.some(header => 
+      ['delivery address 1', 'delivery location', 'delivery address', 'dropoff', 'destination'].includes(header.toLowerCase())
+    ),
+    exReadyTime: headers.some(header => 
+      ['ex. ready time', 'expected ready time', 'pickup time', 'time window start'].includes(header.toLowerCase())
+    ),
+    exDeliveryTime: headers.some(header => 
+      ['ex. delivery time', 'expected delivery time', 'delivery time', 'time window end'].includes(header.toLowerCase())
+    ),
+    actualPickupTime: headers.some(header => 
+      ['actual pickup time'].includes(header.toLowerCase())
+    ),
+    actualDeliveryTime: headers.some(header => 
+      ['actual delivery time'].includes(header.toLowerCase())
+    ),
+    notes: headers.some(header => 
+      ['notes', 'special instructions', 'instructions'].includes(header.toLowerCase())
+    ),
+    driver: headers.some(header => 
+      ['driver', 'driver name', 'courier'].includes(header.toLowerCase())
+    )
+  };
   
   // Parse each line into an object
   const validOrders = lines.slice(1)
@@ -114,7 +139,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // If we have a full address, set the dropoff to the full address
       if (fullAddress.trim() !== "") {
         order.dropoff = fullAddress;
-      } else {
+      } else if (columnsExist.dropoff) {
         order.missingAddress = true;
         missingFields.push('address');
       }
@@ -132,7 +157,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       
       if (pickupAddress) {
         order.pickup = pickupAddress;
-      } else {
+      } else if (columnsExist.pickup) {
         missingFields.push('pickupLocation');
       }
       
@@ -146,31 +171,31 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       if (exReadyTime) {
         order.exReadyTime = exReadyTime;
         order.timeWindowStart = exReadyTime; // For backward compatibility
-      } else {
+      } else if (columnsExist.exReadyTime) {
         missingFields.push('exReadyTime');
       }
       
       if (exDeliveryTime) {
         order.exDeliveryTime = exDeliveryTime;
         order.timeWindowEnd = exDeliveryTime; // For backward compatibility
-      } else {
+      } else if (columnsExist.exDeliveryTime) {
         missingFields.push('exDeliveryTime');
       }
       
       if (actualPickupTime) {
         order.actualPickupTime = actualPickupTime;
-      } else {
+      } else if (columnsExist.actualPickupTime) {
         missingFields.push('actualPickupTime');
       }
       
       if (actualDeliveryTime) {
         order.actualDeliveryTime = actualDeliveryTime;
-      } else {
+      } else if (columnsExist.actualDeliveryTime) {
         missingFields.push('actualDeliveryTime');
       }
       
       // Check for items ONLY if the column exists in the CSV
-      if (itemsColumnExists) {
+      if (columnsExist.items) {
         const items = 
           rawRow["Items"] || 
           rawRow["Items Description"] || 
@@ -188,7 +213,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       }
       
       // Check for distance field ONLY if the column exists
-      if (distanceColumnExists) {
+      if (columnsExist.distance) {
         const distanceStr = 
           rawRow["Distance"] || 
           rawRow["Miles"] || 
@@ -215,6 +240,8 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       
       if (notes) {
         order.notes = notes;
+      } else if (columnsExist.notes) {
+        missingFields.push('notes');
       }
       
       // Check for driver
@@ -227,6 +254,8 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         
       if (driver) {
         order.driver = driver;
+      } else if (columnsExist.driver) {
+        missingFields.push('driver');
       }
       
       // Set the missing fields in the order
