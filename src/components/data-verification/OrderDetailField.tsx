@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +24,7 @@ export interface OrderDetailFieldProps {
   isEditing: boolean;
   isError?: boolean;
   isNoise?: boolean;
+  isWarning?: boolean; // Adding the isWarning prop that was missing
   isSaving?: boolean;
   suggestedValues?: string[];
   validationStatus?: FieldValidationStatus;
@@ -41,6 +41,7 @@ export function OrderDetailField({
   isEditing,
   isError = false,
   isNoise = false,
+  isWarning = false, // Add default value for isWarning
   isSaving = false,
   suggestedValues = [],
   validationStatus = 'none',
@@ -68,10 +69,10 @@ export function OrderDetailField({
     }
   };
 
-  // Determine color based on validation status
+  // Determine color based on validation status and warning flag
   const getStatusColorClass = () => {
     if (validationStatus === 'error' || isError) return 'text-destructive';
-    if (validationStatus === 'warning' || isNoise) return 'text-amber-500';
+    if (validationStatus === 'warning' || isNoise || isWarning) return 'text-amber-500'; // Add isWarning check
     if (validationStatus === 'success') return 'text-green-500';
     if (validationStatus === 'info') return 'text-blue-500';
     return 'text-foreground';
@@ -80,7 +81,7 @@ export function OrderDetailField({
   // Get border color class
   const getBorderColorClass = () => {
     if (validationStatus === 'error' || isError) return 'border-destructive';
-    if (validationStatus === 'warning' || isNoise) return 'border-amber-500';
+    if (validationStatus === 'warning' || isNoise || isWarning) return 'border-amber-500'; // Add isWarning check
     if (validationStatus === 'success') return 'border-green-500';
     if (validationStatus === 'info') return 'border-blue-500';
     return 'border-input';
@@ -90,7 +91,7 @@ export function OrderDetailField({
   const getStatusIcon = () => {
     if (validationStatus === 'error' || isError) 
       return <AlertCircle className="h-4 w-4 text-destructive" />;
-    if (validationStatus === 'warning' || isNoise) 
+    if (validationStatus === 'warning' || isNoise || isWarning) // Add isWarning check
       return <AlertCircle className="h-4 w-4 text-amber-500" />;
     if (validationStatus === 'success') 
       return <CheckCircle className="h-4 w-4 text-green-500" />;
