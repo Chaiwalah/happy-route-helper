@@ -11,15 +11,15 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 export interface VerificationSidebarProps {
   ordersRequiringVerification: DeliveryOrder[];
   verifiedOrders: DeliveryOrder[];
-  selectedOrderIndex: number | null;
-  onOrderSelect: (index: number) => void;
+  selectedOrderId: string | null;
+  onOrderSelect: (id: string) => void;
   ordersWithTripNumberIssues: DeliveryOrder[];
 }
 
 export function VerificationSidebar({
   ordersRequiringVerification = [],
   verifiedOrders = [],
-  selectedOrderIndex,
+  selectedOrderId,
   onOrderSelect,
   ordersWithTripNumberIssues = []
 }: VerificationSidebarProps) {
@@ -33,11 +33,11 @@ export function VerificationSidebar({
               <div 
                 key={order.id} 
                 className={`p-2 border rounded-md cursor-pointer transition-colors ${
-                  selectedOrderIndex === verifiedOrders.findIndex(o => o.id === order.id) 
+                  selectedOrderId === order.id 
                     ? 'bg-primary/10 border-primary' 
                     : 'hover:bg-muted'
                 }`}
-                onClick={() => onOrderSelect(verifiedOrders.findIndex(o => o.id === order.id))}
+                onClick={() => onOrderSelect(order.id)}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{order.id}</span>
