@@ -20,14 +20,14 @@ const safeFormatDate = (dateString: string | undefined): string => {
 };
 
 // Check if a trip number is a test/noise value that should be ignored
-// Make this function exportable by adding 'export'
+// Make this function exportable for use in issue detection
 export const isNoiseOrTestTripNumber = (tripNumber: string | undefined): boolean => {
   if (!tripNumber) return false;
   
   const trimmedValue = tripNumber.trim();
   
   // List of known test/noise trip number values to ignore
-  const noiseValues = ['24', '25', 'TEST', 'NOISE', 'test', 'noise'];
+  const noiseValues = ['24', '25', 'TEST', 'NOISE', 'test', 'noise', 'N/A'];
   
   // Check if the trip number is in our noise list
   if (noiseValues.includes(trimmedValue)) {

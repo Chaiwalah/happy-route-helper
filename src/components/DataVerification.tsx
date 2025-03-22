@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryOrder } from '@/utils/csvParser';
 import { AlertCircle, CheckCircle, Edit } from 'lucide-react';
+import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
@@ -40,26 +41,76 @@ export function DataVerification({
   // Update state when orders prop changes
   useEffect(() => {
     if (orders && orders.length > 0) {
-      setVerifiedOrders([...orders]);
+      // Preprocess the orders to remove any false positives in missingFields
+      const processedOrders = orders.map(order => {
+        // Create a copy to avoid mutating props
+        const updatedOrder = { ...order };
+        
+        // Fix missing fields detection for trip numbers that are "N/A" but not empty
+        if (updatedOrder.tripNumber && updatedOrder.tripNumber.trim() !== '' && 
+            updatedOrder.missingFields.includes('tripNumber')) {
+          // If we have a non-empty trip number but it's flagged as missing, remove it from missingFields
+          // This fixes the case where "N/A" is a valid value but treated as missing
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
+          console.log(`Fixed false positive: Order ${updatedOrder.id} has Trip Number "${updatedOrder.tripNumber}" but was incorrectly marked as missing`);
+        }
+        
+        // Additional check for "N/A" as a trip number - mark as missing or noise
+        if (updatedOrder.tripNumber && (
+            updatedOrder.tripNumber.trim() === 'N/A' || 
+            updatedOrder.tripNumber.trim() === 'n/a')) {
+          // Replace "N/A" with empty string to trigger proper trip number validation
+          updatedOrder.tripNumber = '';
+          
+          // Add tripNumber to missingFields if not already there
+          if (!updatedOrder.missingFields.includes('tripNumber')) {
+            updatedOrder.missingFields.push('tripNumber');
+            console.log(`Marked Order ${updatedOrder.id} with "N/A" Trip Number as missing`);
+          }
+        }
+        
+        // Skip unstructured field validation from Special Instructions
+        if (updatedOrder.notes && updatedOrder.notes.includes('SPECIAL INSTRUCTIONS')) {
+          console.log(`Order ${updatedOrder.id} has special instructions that may contain unstructured data`);
+          // No need to flag special instructions fields as issues
+        }
+        
+        return updatedOrder;
+      });
+      
+      setVerifiedOrders(processedOrders);
       
       // Reset selection state when orders change
       setSelectedOrderIndex(null);
       setEditingField(null);
       setFieldValue("");
       
-      console.log("DataVerification: Orders updated, count:", orders.length);
+      console.log("DataVerification: Orders updated, count:", processedOrders.length);
     }
   }, [orders]);
   
   // Filter orders with missing or potentially problematic data
-  const ordersRequiringVerification = verifiedOrders.filter(order => 
-    order.missingFields.length > 0 || !order.tripNumber || order.tripNumber.trim() === ''
-  );
+  // Exclude noise trip numbers from verification as they'll be filtered out anyway
+  const ordersRequiringVerification = verifiedOrders.filter(order => {
+    // Skip orders with test/noise trip numbers from verification
+    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
+      return false;
+    }
+    
+    // Include orders with actual missing fields or missing trip numbers
+    return order.missingFields.length > 0 || !order.tripNumber || order.tripNumber.trim() === '';
+  });
   
   // Focus on Trip Number field issues specifically
-  const ordersWithTripNumberIssues = verifiedOrders.filter(order => 
-    !order.tripNumber || order.tripNumber.trim() === '' || order.missingFields.includes('tripNumber')
-  );
+  const ordersWithTripNumberIssues = verifiedOrders.filter(order => {
+    // Skip testing/noise trip numbers
+    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
+      return false;
+    }
+    
+    // Include actually missing trip numbers
+    return !order.tripNumber || order.tripNumber.trim() === '' || order.missingFields.includes('tripNumber');
+  });
   
   const handleOrderEdit = (index: number) => {
     setSelectedOrderIndex(index);
@@ -90,6 +141,11 @@ export function DataVerification({
           updatedOrder.missingFields = updatedOrder.missingFields.filter(f => f !== editingField);
         }
         
+        // Special case for Trip Number - always mark as resolved if we manually set a value
+        if (editingField === 'tripNumber' && fieldValue.trim() !== '') {
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(f => f !== 'tripNumber');
+        }
+        
         return updatedOrder;
       }
       return order;
@@ -113,7 +169,10 @@ export function DataVerification({
   const handleVerificationComplete = () => {
     // Check for any remaining issues with trip numbers
     const stillMissingTripNumbers = verifiedOrders.filter(order => 
-      !order.tripNumber || order.tripNumber.trim() === ''
+      // Skip test/noise trip numbers from this check
+      !(order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) &&
+      // Only flag actually missing or empty trip numbers
+      (!order.tripNumber || order.tripNumber.trim() === '')
     ).length;
     
     if (stillMissingTripNumbers > 0) {
@@ -249,11 +308,15 @@ export function DataVerification({
                       </div>
                     ) : (
                       <div className={`p-2 bg-muted/20 rounded text-sm ${
-                        !verifiedOrders[selectedOrderIndex].tripNumber || verifiedOrders[selectedOrderIndex].tripNumber.trim() === '' 
+                        !verifiedOrders[selectedOrderIndex].tripNumber || 
+                        verifiedOrders[selectedOrderIndex].tripNumber.trim() === '' || 
+                        isNoiseOrTestTripNumber(verifiedOrders[selectedOrderIndex].tripNumber || '')
                           ? 'text-red-500 italic' 
                           : ''
                       }`}>
-                        {verifiedOrders[selectedOrderIndex].tripNumber?.trim() || 'Not specified'}
+                        {isNoiseOrTestTripNumber(verifiedOrders[selectedOrderIndex].tripNumber || '') 
+                          ? `${verifiedOrders[selectedOrderIndex].tripNumber} (will be excluded)` 
+                          : verifiedOrders[selectedOrderIndex].tripNumber?.trim() || 'Not specified'}
                       </div>
                     )}
                   </div>
