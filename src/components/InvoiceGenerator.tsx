@@ -34,11 +34,11 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     setIsGenerating(true);
     toast({
       title: "Generating invoice",
-      description: "Calculating routes using Mapbox Directions API...",
+      description: "Grouping orders by Trip Number and calculating routes...",
     });
     
     try {
-      // Generate invoice with proper route batching and pricing
+      // Generate invoice with proper route batching by Trip Number
       const generatedInvoice = await generateInvoice(orders);
       setInvoice(generatedInvoice);
       
@@ -55,7 +55,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       } else {
         toast({
           title: "Invoice generated successfully",
-          description: `Total: $${generatedInvoice.totalCost.toFixed(2)} for ${orders.length} orders`,
+          description: `Total: $${generatedInvoice.totalCost.toFixed(2)} for ${orders.length} orders (${generatedInvoice.items.length} routes)`,
         });
       }
     } catch (error) {

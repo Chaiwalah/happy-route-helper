@@ -40,4 +40,5 @@ export type Invoice = {
 export type OrderRoute = {
   routeKey: string;
   orders: DeliveryOrder[];
+  isMultiStop?: boolean;
 };

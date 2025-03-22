@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { calculateRouteDistance } from './mapboxService';
 
@@ -33,23 +34,22 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     return order.estimatedDistance || 0;
   }
   
-  // For multi-stop routes, extract all addresses in sequential order
-  // The sequence should be: pickup → stop1 → stop2 → ... → final stop
+  // For multi-stop routes, extract all addresses in order to calculate the full chain distance
   const addresses: string[] = [];
   
-  // Start with the first pickup
+  // Start with the pickup of the first order (assuming all orders in a trip start from the same pharmacy)
   if (routeOrders[0].pickup) {
     addresses.push(routeOrders[0].pickup);
   }
   
-  // Add all dropoffs in sequence
+  // Add all dropoffs in sequence to create the full route chain
   routeOrders.forEach(order => {
     if (order.dropoff) {
       addresses.push(order.dropoff);
     }
   });
   
-  // If we have enough addresses, calculate the route distance
+  // Calculate the full route distance with all stops
   if (addresses.length >= 2) {
     try {
       const routeDistance = await calculateRouteDistance(addresses);

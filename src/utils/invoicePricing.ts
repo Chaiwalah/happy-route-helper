@@ -18,7 +18,8 @@ export const calculateInvoiceCosts = (routeType: 'single' | 'multi-stop', totalD
   } else {
     // Multi-stop routes: (total mileage × $1.10) + $12 for each extra stop
     baseCost = totalDistance * 1.10;
-    addOns = (stops - 1) * 12; // $12 per each extra stop beyond the first
+    // Calculate add-ons: $12 per each additional stop beyond the first
+    addOns = (stops - 1) * 12; 
   }
   
   return {

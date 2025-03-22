@@ -16,7 +16,7 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
-  // Organize orders into routes by driver, TripNumber, and date
+  // Organize orders into routes by TripNumber, driver, and date
   const routes = organizeOrdersIntoRoutes(orders);
   
   // Create invoice items based on routes
@@ -26,7 +26,7 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
   for (const route of routes) {
     const routeOrders = route.orders;
     
-    // Determine if it's a single order or multi-stop route
+    // Explicitly determine if it's a single order or multi-stop route
     const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
     const stops = routeOrders.length;
     

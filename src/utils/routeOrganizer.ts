@@ -13,7 +13,7 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       ? new Date(order.exReadyTime).toISOString().split('T')[0] 
       : 'unknown-date';
     
-    // If TripNumber exists, use it for route grouping
+    // If TripNumber exists, use it for route grouping - this is the primary grouping method
     if (order.tripNumber) {
       const routeKey = `${driver}-${dateStr}-trip-${order.tripNumber}`;
       
@@ -23,31 +23,26 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       
       routeMap.get(routeKey)!.push(order);
     } 
-    // Fallback to time-based grouping if no TripNumber
-    else if (order.exReadyTime) {
-      // Extract date and hour from ready time for time window grouping
-      const readyTime = new Date(order.exReadyTime);
-      if (!isNaN(readyTime.getTime())) {
-        const hour = readyTime.getHours();
-        
-        // Group by driver, date, and hour window
-        const routeKey = `${driver}-${dateStr}-hour-${hour}`;
-        
-        if (!routeMap.has(routeKey)) {
-          routeMap.set(routeKey, []);
+    // Fallback to treating as individual route if no TripNumber
+    else {
+      // Check if we have a valid timestamp to potentially group by time window
+      if (order.exReadyTime) {
+        const readyTime = new Date(order.exReadyTime);
+        if (!isNaN(readyTime.getTime())) {
+          // Since there's no Trip Number, treat as an individual order
+          const routeKey = `${driver}-${dateStr}-order-${order.id}`;
+          routeMap.set(routeKey, [order]);
+        } else {
+          // If date parsing fails, treat as individual route
+          const routeKey = `${driver}-order-${order.id}`;
+          routeMap.set(routeKey, [order]);
         }
-        
-        routeMap.get(routeKey)!.push(order);
-      } else {
-        // If date parsing fails, treat as individual route
+      } 
+      // If neither TripNumber nor valid time exists, treat as individual route
+      else {
         const routeKey = `${driver}-order-${order.id}`;
         routeMap.set(routeKey, [order]);
       }
-    } 
-    // If neither TripNumber nor valid time exists, treat as individual route
-    else {
-      const routeKey = `${driver}-order-${order.id}`;
-      routeMap.set(routeKey, [order]);
     }
   });
   
@@ -55,7 +50,9 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
   const routes: OrderRoute[] = Array.from(routeMap.entries()).map(([routeKey, routeOrders]) => {
     return {
       routeKey,
-      orders: routeOrders
+      orders: routeOrders,
+      // Explicitly identify whether this is a multi-stop route based on order count
+      isMultiStop: routeOrders.length > 1
     };
   });
   
