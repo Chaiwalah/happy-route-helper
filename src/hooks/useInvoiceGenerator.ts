@@ -152,7 +152,11 @@ export const useInvoiceGenerator = (orders: DeliveryOrder[]) => {
   const handleReviewInvoice = useCallback(() => {
     if (!invoice) return;
     
-    const updatedInvoice = { ...invoice, status: 'reviewed', lastModified: new Date().toISOString() };
+    const updatedInvoice = { 
+      ...invoice, 
+      status: 'reviewed' as const, 
+      lastModified: new Date().toISOString() 
+    };
     setInvoice(updatedInvoice);
     
     toast({
@@ -165,7 +169,11 @@ export const useInvoiceGenerator = (orders: DeliveryOrder[]) => {
   const handleFinalizeInvoice = useCallback(() => {
     if (!invoice) return;
     
-    const updatedInvoice = { ...invoice, status: 'finalized', lastModified: new Date().toISOString() };
+    const updatedInvoice = { 
+      ...invoice, 
+      status: 'finalized' as const, 
+      lastModified: new Date().toISOString() 
+    };
     setInvoice(updatedInvoice);
     
     toast({
