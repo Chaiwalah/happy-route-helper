@@ -1,91 +1,66 @@
-
 "use client"
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Invoice } from '@/utils/invoiceCalculator';
 import { toast } from '@/components/ui/use-toast';
-import { CalculatorIcon, Clock, FileDown, Printer, RefreshCw } from 'lucide-react';
+import { 
+  CalculatorIcon, 
+  Clock, 
+  FileDown, 
+  Printer, 
+  RefreshCw, 
+  FileText, 
+  Send
+} from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { PDFTemplateSettings } from '@/utils/invoiceTypes';
+import { generatePdfInvoice, sendPdfToSlack } from '@/utils/pdfGenerator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface InvoiceDetailsProps {
   invoice: Invoice;
   onRecalculateDistance?: (index: number, currentDistance: number) => void;
   allowRecalculation?: boolean;
+  deliveryOrders?: any[]; // Original orders data for PDF enhancement
 }
 
 export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ 
   invoice,
   onRecalculateDistance,
-  allowRecalculation = false
+  allowRecalculation = false,
+  deliveryOrders = []
 }) => {
   const invoiceRef = useRef<HTMLDivElement>(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'csv' | 'excel'>('pdf');
+  const [pdfSettings, setPdfSettings] = useState<PDFTemplateSettings>({
+    templateType: 'contractor',
+    showPatientDetails: true,
+    includeDateRange: true,
+    showBusinessLogo: false,
+    showNotes: true
+  });
+  const [weekEnding, setWeekEnding] = useState<string>('');
+  const [businessName, setBusinessName] = useState<string>('');
+  const [sendToSlack, setSendToSlack] = useState(false);
+  const [slackEmail, setSlackEmail] = useState('');
 
   const handleExportInvoice = () => {
-    try {
-      // Prepare CSV content
-      const headers = ['Order ID', 'Driver', 'Pickup', 'Dropoff', 'Distance (mi)', 'Route Type', 'Stops', 'Base Cost ($)', 'Add-ons ($)', 'Total ($)'];
-      
-      const rows = invoice.items.map(item => [
-        item.orderId,
-        item.driver,
-        item.pickup,
-        item.dropoff,
-        item.distance.toFixed(1),
-        item.routeType,
-        item.stops,
-        item.baseCost.toFixed(2),
-        item.addOns.toFixed(2),
-        item.totalCost.toFixed(2)
-      ]);
-      
-      // Add summary row
-      rows.push([
-        'TOTAL',
-        '',
-        '',
-        '',
-        invoice.totalDistance.toFixed(1),
-        '',
-        '',
-        '',
-        '',
-        invoice.totalCost.toFixed(2)
-      ]);
-      
-      // Convert to CSV
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n');
-      
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      
-      link.setAttribute('href', url);
-      link.setAttribute('download', `invoice-${invoice.date}.csv`);
-      link.style.visibility = 'hidden';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast({
-        title: "Invoice exported",
-        description: "CSV file downloaded successfully",
-      });
-    } catch (error) {
-      console.error('Error exporting invoice:', error);
-      toast({
-        title: "Export failed",
-        description: "Failed to export invoice to CSV",
-        variant: "destructive",
-      });
-    }
+    setShowExportDialog(true);
   };
 
   const handlePrintInvoice = () => {
@@ -177,6 +152,129 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
     }
   };
 
+  const handleGenerateExport = async () => {
+    try {
+      // Close dialog first to show progress
+      setShowExportDialog(false);
+      
+      // Prepare invoice with additional metadata
+      const enhancedInvoice: Invoice = {
+        ...invoice,
+        weekEnding: weekEnding || invoice.date,
+        businessName: businessName || 'Medical Services',
+      };
+      
+      if (exportFormat === 'pdf') {
+        // Show generating toast
+        toast({
+          title: "Generating PDF",
+          description: "Please wait while we prepare your PDF invoice...",
+        });
+        
+        // Generate PDF
+        const pdfBlob = await generatePdfInvoice(enhancedInvoice, pdfSettings);
+        
+        if (!pdfBlob) {
+          toast({
+            title: "PDF Generation Failed",
+            description: "There was an error creating the PDF file.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Create download link for PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `invoice-${invoice.date}-${pdfSettings.templateType}.pdf`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Send to Slack if requested
+        if (sendToSlack) {
+          await sendPdfToSlack(pdfBlob, enhancedInvoice);
+        }
+        
+        toast({
+          title: "PDF Export Complete",
+          description: "PDF file downloaded successfully",
+        });
+      } else if (exportFormat === 'csv') {
+        // Prepare CSV content
+        const headers = ['Order ID', 'Driver', 'Pickup', 'Dropoff', 'Distance (mi)', 'Route Type', 'Stops', 'Base Cost ($)', 'Add-ons ($)', 'Total ($)'];
+        
+        const rows = invoice.items.map(item => [
+          item.orderId,
+          item.driver,
+          item.pickup,
+          item.dropoff,
+          item.distance.toFixed(1),
+          item.routeType,
+          item.stops,
+          item.baseCost.toFixed(2),
+          item.addOns.toFixed(2),
+          item.totalCost.toFixed(2)
+        ]);
+        
+        // Add summary row
+        rows.push([
+          'TOTAL',
+          '',
+          '',
+          '',
+          invoice.totalDistance.toFixed(1),
+          '',
+          '',
+          '',
+          '',
+          invoice.totalCost.toFixed(2)
+        ]);
+        
+        // Convert to CSV
+        const csvContent = [
+          headers.join(','),
+          ...rows.map(row => row.join(','))
+        ].join('\n');
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `invoice-${invoice.date}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        toast({
+          title: "Invoice exported",
+          description: "CSV file downloaded successfully",
+        });
+      } else if (exportFormat === 'excel') {
+        // Mock Excel export functionality
+        toast({
+          title: "Exporting to Excel",
+          description: "Excel export functionality is in development.",
+        });
+      }
+    } catch (error) {
+      console.error('Error exporting invoice:', error);
+      toast({
+        title: "Export failed",
+        description: "Failed to export invoice. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -185,7 +283,7 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
           <div className="flex space-x-2">
             <Button variant="outline" size="sm" onClick={handleExportInvoice}>
               <FileDown className="h-4 w-4 mr-2" />
-              Export CSV
+              Export
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrintInvoice}>
               <Printer className="h-4 w-4 mr-2" />
@@ -299,6 +397,149 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
           </div>
         </div>
       </CardContent>
+
+      {/* Export Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Invoice</DialogTitle>
+            <DialogDescription>
+              Choose export format and options for your invoice.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Tabs defaultValue="pdf" onValueChange={(value) => setExportFormat(value as any)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="pdf">PDF</TabsTrigger>
+              <TabsTrigger value="csv">CSV</TabsTrigger>
+              <TabsTrigger value="excel">Excel</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="pdf" className="space-y-4 py-4">
+              <div className="space-y-2">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="col-span-4">
+                    <Label htmlFor="template">Invoice Template</Label>
+                    <div className="flex mt-2 space-x-2">
+                      <Button 
+                        variant={pdfSettings.templateType === 'standard' ? 'default' : 'outline'} 
+                        className="flex-1"
+                        onClick={() => setPdfSettings({...pdfSettings, templateType: 'standard'})}
+                      >
+                        Standard
+                      </Button>
+                      <Button 
+                        variant={pdfSettings.templateType === 'contractor' ? 'default' : 'outline'} 
+                        className="flex-1"
+                        onClick={() => setPdfSettings({...pdfSettings, templateType: 'contractor'})}
+                      >
+                        Contractor
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="col-span-4">
+                    <Label htmlFor="weekEnding">Week Ending</Label>
+                    <Input 
+                      id="weekEnding" 
+                      type="date" 
+                      value={weekEnding} 
+                      onChange={(e) => setWeekEnding(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="col-span-4">
+                    <Label htmlFor="businessName">Pharmacy/Lab/Hospital Name</Label>
+                    <Input 
+                      id="businessName" 
+                      value={businessName} 
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="e.g., ABC Pharmacy"
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="col-span-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="showPatientDetails" className="cursor-pointer">Show Patient Details</Label>
+                      <Switch 
+                        id="showPatientDetails"
+                        checked={pdfSettings.showPatientDetails} 
+                        onCheckedChange={(checked) => setPdfSettings({...pdfSettings, showPatientDetails: checked})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="col-span-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="showNotes" className="cursor-pointer">Include Notes</Label>
+                      <Switch 
+                        id="showNotes"
+                        checked={pdfSettings.showNotes} 
+                        onCheckedChange={(checked) => setPdfSettings({...pdfSettings, showNotes: checked})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="col-span-4 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="sendToSlack" className="cursor-pointer">Send to Slack</Label>
+                      <Switch 
+                        id="sendToSlack"
+                        checked={sendToSlack} 
+                        onCheckedChange={setSendToSlack}
+                      />
+                    </div>
+                  </div>
+                  
+                  {sendToSlack && (
+                    <div className="col-span-4">
+                      <Label htmlFor="slackEmail">Slack Channel or Email</Label>
+                      <Input 
+                        id="slackEmail" 
+                        value={slackEmail} 
+                        onChange={(e) => setSlackEmail(e.target.value)}
+                        placeholder="e.g., #invoices or user@example.com"
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="csv" className="py-4">
+              <p className="text-sm text-muted-foreground">
+                Export as CSV for use in spreadsheet applications. Includes all invoice data in a tabular format.
+              </p>
+            </TabsContent>
+            
+            <TabsContent value="excel" className="py-4">
+              <p className="text-sm text-muted-foreground">
+                Export as Excel workbook with formatted tables and calculations.
+              </p>
+            </TabsContent>
+          </Tabs>
+          
+          <DialogFooter className="flex space-x-2 sm:justify-start">
+            <Button type="button" variant="outline" onClick={() => setShowExportDialog(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleGenerateExport} className="flex items-center">
+              <FileText className="h-4 w-4 mr-2" />
+              {exportFormat === 'pdf' ? 'Generate PDF' : 
+               exportFormat === 'csv' ? 'Export CSV' : 'Export Excel'}
+            </Button>
+            {exportFormat === 'pdf' && sendToSlack && (
+              <Button type="button" variant="outline" onClick={handleGenerateExport} className="flex items-center">
+                <Send className="h-4 w-4 mr-2" />
+                Send to Slack
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

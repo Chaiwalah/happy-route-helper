@@ -26,11 +26,12 @@ import {
 } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { Settings, Download, CheckCircle2, FileText } from 'lucide-react';
+import { Settings, Download, CheckCircle2, FileText, Building, CalendarRange } from 'lucide-react';
 import { InvoiceGenerationSettings } from '@/utils/invoiceTypes';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { enhanceInvoiceItemsWithDetails } from '@/utils/pdfGenerator';
 
 interface InvoiceGeneratorProps {
   orders: DeliveryOrder[];
@@ -47,7 +48,14 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     flagTimeWindowThreshold: 30
   });
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
   const [itemToRecalculate, setItemToRecalculate] = useState<{index: number, distance: number} | null>(null);
+  const [invoiceMetadata, setInvoiceMetadata] = useState({
+    weekEnding: '',
+    businessName: '',
+    businessType: 'pharmacy' as 'pharmacy' | 'lab' | 'hospital' | 'other',
+    contactPerson: ''
+  });
 
   const handleGenerateInvoice = async () => {
     if (orders.length === 0) {
@@ -68,7 +76,19 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     try {
       // Generate invoice with proper route batching by Trip Number
       const generatedInvoice = await generateInvoice(orders, settings);
-      setInvoice(generatedInvoice);
+      
+      // Enhance invoice with metadata from invoice settings
+      const enhancedInvoice = {
+        ...generatedInvoice,
+        weekEnding: invoiceMetadata.weekEnding || generatedInvoice.date,
+        businessName: invoiceMetadata.businessName || 'Medical Services',
+        businessType: invoiceMetadata.businessType,
+        contactPerson: invoiceMetadata.contactPerson
+      };
+      
+      // Enhance invoice items with detailed delivery information for PDF export
+      const invoiceWithDetails = enhanceInvoiceItemsWithDetails(enhancedInvoice, orders);
+      setInvoice(invoiceWithDetails);
       
       // Detect any potential issues
       const detectedIssues = detectIssues(orders, settings);
@@ -83,7 +103,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       } else {
         toast({
           title: "Invoice generated successfully",
-          description: `Total: $${generatedInvoice.totalCost.toFixed(2)} for ${orders.length} orders (${generatedInvoice.items.length} routes)`,
+          description: `Total: $${invoiceWithDetails.totalCost.toFixed(2)} for ${orders.length} orders (${invoiceWithDetails.items.length} routes)`,
         });
       }
     } catch (error) {
@@ -169,6 +189,30 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     // Close dialog
     setShowExportDialog(false);
   };
+  
+  const openInvoiceMetadataDialog = () => {
+    setShowMetadataDialog(true);
+  };
+  
+  const updateInvoiceMetadata = () => {
+    if (!invoice) return;
+    
+    const updatedInvoice = {
+      ...invoice,
+      weekEnding: invoiceMetadata.weekEnding || invoice.date,
+      businessName: invoiceMetadata.businessName,
+      businessType: invoiceMetadata.businessType,
+      contactPerson: invoiceMetadata.contactPerson
+    };
+    
+    setInvoice(updatedInvoice);
+    setShowMetadataDialog(false);
+    
+    toast({
+      title: "Invoice details updated",
+      description: "The invoice metadata has been updated successfully",
+    });
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -240,6 +284,14 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
             <>
               <Button 
                 variant="outline" 
+                onClick={openInvoiceMetadataDialog}
+                className="flex items-center"
+              >
+                <Building className="h-4 w-4 mr-2" />
+                Business Info
+              </Button>
+              <Button 
+                variant="outline" 
                 disabled={invoice.status === 'finalized'} 
                 onClick={handleReviewInvoice}
               >
@@ -278,6 +330,11 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                   {invoice.recalculatedCount} manual adjustment{invoice.recalculatedCount > 1 ? 's' : ''}
                 </Badge>
               )}
+              {invoice.businessName && (
+                <Badge variant="outline" className="text-blue-500 border-blue-500">
+                  {invoice.businessName}
+                </Badge>
+              )}
             </div>
             
             <div className="text-sm text-muted-foreground">
@@ -299,6 +356,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                 invoice={invoice} 
                 onRecalculateDistance={handleRecalculateDistance} 
                 allowRecalculation={settings.allowManualDistanceAdjustment && invoice.status !== 'finalized'} 
+                deliveryOrders={orders}
               />
             </TabsContent>
             
@@ -395,6 +453,86 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Invoice Metadata Dialog */}
+      <Dialog open={showMetadataDialog} onOpenChange={setShowMetadataDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invoice Business Details</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="weekEnding">Week Ending</Label>
+              <Input 
+                id="weekEnding" 
+                type="date" 
+                value={invoiceMetadata.weekEnding} 
+                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, weekEnding: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="businessName">Business Name</Label>
+              <Input 
+                id="businessName" 
+                value={invoiceMetadata.businessName} 
+                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, businessName: e.target.value})}
+                placeholder="e.g., ABC Pharmacy"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="businessType">Business Type</Label>
+              <div className="flex space-x-2 mt-1">
+                <Button
+                  type="button"
+                  variant={invoiceMetadata.businessType === 'pharmacy' ? 'default' : 'outline'}
+                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'pharmacy'})}
+                  className="flex-1"
+                >
+                  Pharmacy
+                </Button>
+                <Button
+                  type="button"
+                  variant={invoiceMetadata.businessType === 'lab' ? 'default' : 'outline'}
+                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'lab'})}
+                  className="flex-1"
+                >
+                  Lab
+                </Button>
+                <Button
+                  type="button"
+                  variant={invoiceMetadata.businessType === 'hospital' ? 'default' : 'outline'}
+                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'hospital'})}
+                  className="flex-1"
+                >
+                  Hospital
+                </Button>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="contactPerson">Contact Person</Label>
+              <Input 
+                id="contactPerson" 
+                value={invoiceMetadata.contactPerson} 
+                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, contactPerson: e.target.value})}
+                placeholder="e.g., John Smith"
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMetadataDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={updateInvoiceMetadata}>
+              Update Invoice Details
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

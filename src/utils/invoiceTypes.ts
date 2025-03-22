@@ -24,6 +24,15 @@ export type InvoiceItem = {
   originalDistance?: number; // Original distance before recalculation
   timeWindow?: string;     // Time window information
   orderIds?: string[];     // Array of all order IDs (for multi-stop routes)
+  // New fields for PDF template
+  patientName?: string;    // Patient name for medical deliveries
+  address?: string;        // Full address
+  city?: string;           // City
+  zipCode?: string;        // Zip code
+  date?: string;           // Delivery date
+  pickupTime?: string;     // Time of pickup
+  deliveryTime?: string;   // Time of delivery
+  notes?: string;          // Delivery notes
 };
 
 export type DriverSummary = {
@@ -42,6 +51,11 @@ export type Invoice = {
   recalculatedCount?: number; // Count of manually recalculated items
   status: 'draft' | 'reviewed' | 'finalized';
   lastModified: string;
+  // New fields for PDF template
+  weekEnding?: string;        // Week ending date for the invoice
+  businessName?: string;      // Business name (pharmacy/lab/hospital)
+  businessType?: 'pharmacy' | 'lab' | 'hospital' | 'other'; // Type of business
+  contactPerson?: string;     // Contact person at the business
 };
 
 export type OrderRoute = {
@@ -82,4 +96,21 @@ export type InvoiceGenerationSettings = {
 export type DistanceRecalculationRequest = {
   itemId: string;
   newDistance: number;
+};
+
+// PDF Template settings
+export type PDFTemplateSettings = {
+  templateType: 'standard' | 'contractor';
+  showPatientDetails: boolean;
+  includeDateRange: boolean;
+  showBusinessLogo: boolean;
+  showNotes: boolean;
+};
+
+// Invoice export options
+export type InvoiceExportOptions = {
+  format: 'pdf' | 'csv' | 'excel';
+  template?: PDFTemplateSettings;
+  sendToEmail?: string;
+  sendToSlack?: boolean;
 };
