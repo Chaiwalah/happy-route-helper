@@ -18,7 +18,7 @@ export const generateDriverSummaries = (items: InvoiceItem[]): DriverSummary[] =
     const summary = driverMap.get(driver)!;
     summary.orderCount += 1;
     summary.totalDistance += item.distance;
-    summary.totalEarnings += item.totalCost;
+    summary.totalEarnings += item.totalCost || 0;
   });
   
   return Array.from(driverMap.values());

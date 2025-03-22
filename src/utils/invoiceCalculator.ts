@@ -1,6 +1,6 @@
 
 import { DeliveryOrder } from './csvParser';
-import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings } from './invoiceTypes';
+import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings, DriverSummary } from './invoiceTypes';
 import { organizeOrdersIntoRoutes } from './routeOrganizer';
 import { calculateMultiStopRouteDistance } from './routeDistanceCalculator';
 import { calculateInvoiceCosts } from './invoicePricing';
@@ -8,7 +8,7 @@ import { generateDriverSummaries } from './driverSummaryGenerator';
 import { detectIssues } from './issueDetector';
 
 // Re-export types and functions for backward compatibility
-export type { Issue, InvoiceItem, DriverSummary, Invoice } from './invoiceTypes';
+export type { Issue, InvoiceItem, Invoice, DriverSummary } from './invoiceTypes';
 export { detectIssues } from './issueDetector';
 
 // Default settings for invoice generation - disabled distance threshold flagging
@@ -81,10 +81,12 @@ export const generateInvoice = async (
     const timeWindow = timeWindows.length > 0 ? timeWindows.join(' | ') : undefined;
     
     // Store all order IDs separately for multi-stop routes
-    const orderIds = routeType === 'multi-stop' ? routeOrders.map(order => order.id) : undefined;
+    const orderIds = routeOrders.map(order => order.id);
     
     // Create a single invoice item for the entire route
     items.push({
+      routeKey: route.routeKey,
+      tripNumber: route.tripNumber,
       orderId: combinedOrderId,
       driver,
       pickup,
@@ -96,25 +98,32 @@ export const generateInvoice = async (
       addOns,
       totalCost,
       timeWindow,
-      orderIds
+      orderIds,
+      orders: routeOrders,
+      cost: totalCost // For backward compatibility
     });
   }
   
   // Calculate totals
   const totalDistance = items.reduce((sum, item) => sum + item.distance, 0);
-  const totalCost = items.reduce((sum, item) => sum + item.totalCost, 0);
+  const totalCost = items.reduce((sum, item) => sum + (item.totalCost || 0), 0);
   
   // Generate driver summaries
   const driverSummaries = generateDriverSummaries(items);
   
   return {
+    id: `INV-${formattedDate}-${Math.floor(Math.random() * 1000)}`,
     date: formattedDate,
     items,
     totalDistance,
     totalCost,
     driverSummaries,
     status: 'draft',
-    lastModified: timestamp
+    lastModified: timestamp,
+    weekEnding: '',
+    businessName: '',
+    businessType: 'pharmacy',
+    contactPerson: ''
   };
 };
 
@@ -143,21 +152,22 @@ export const recalculateInvoiceItem = (
   
   // Recalculate costs based on new distance
   const { baseCost, addOns, totalCost } = calculateInvoiceCosts(
-    item.routeType, 
+    item.routeType || 'single', 
     newDistance, 
-    item.stops
+    item.stops || 1
   );
   
   item.baseCost = baseCost;
   item.addOns = addOns;
   item.totalCost = totalCost;
+  item.cost = totalCost; // For backward compatibility
   
   // Update item in the invoice
   updatedInvoice.items[itemIndex] = item;
   
   // Recalculate invoice totals
   updatedInvoice.totalDistance = updatedInvoice.items.reduce((sum, i) => sum + i.distance, 0);
-  updatedInvoice.totalCost = updatedInvoice.items.reduce((sum, i) => sum + i.totalCost, 0);
+  updatedInvoice.totalCost = updatedInvoice.items.reduce((sum, i) => sum + (i.totalCost || 0), 0);
   
   // Update recalculated count
   updatedInvoice.recalculatedCount = (updatedInvoice.recalculatedCount || 0) + 1;

@@ -1,3 +1,4 @@
+
 export interface InvoiceGenerationSettings {
   allowManualDistanceAdjustment: boolean;
   flagDriverLoadThreshold: number;
@@ -28,6 +29,29 @@ export interface InvoiceItem {
   distance: number;
   cost: number;
   orders: any[];
+  
+  // Added properties based on error messages
+  orderId?: string;
+  pickup?: string;
+  dropoff?: string;
+  routeType?: 'single' | 'multi-stop';
+  stops?: number;
+  baseCost?: number;
+  addOns?: number;
+  totalCost?: number;
+  timeWindow?: string;
+  recalculated?: boolean;
+  originalDistance?: number;
+  
+  // PDF related fields
+  patientName?: string;
+  address?: string;
+  city?: string;
+  zipCode?: string;
+  date?: string;
+  pickupTime?: string;
+  deliveryTime?: string;
+  notes?: string;
 }
 
 export interface Invoice {
@@ -39,7 +63,30 @@ export interface Invoice {
   contactPerson: string;
   items: InvoiceItem[];
   totalCost: number;
-  status: 'pending' | 'reviewed' | 'finalized';
+  status: 'pending' | 'reviewed' | 'finalized' | 'draft';
+  
+  // Added properties based on error messages
+  totalDistance?: number;
+  driverSummaries?: DriverSummary[];
+  recalculatedCount?: number;
+  lastModified?: string;
+}
+
+// Add DriverSummary interface
+export interface DriverSummary {
+  name: string;
+  orderCount: number;
+  totalDistance: number;
+  totalEarnings: number;
+}
+
+// Add PDFTemplateSettings interface
+export interface PDFTemplateSettings {
+  templateType: 'standard' | 'contractor';
+  showPatientDetails: boolean;
+  includeDateRange?: boolean;
+  showBusinessLogo?: boolean;
+  showNotes?: boolean;
 }
 
 // Extend ParsedDataSummary type to include trip number quality metrics
