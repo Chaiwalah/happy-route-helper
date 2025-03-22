@@ -2,6 +2,7 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { isEmptyValue, isUnassignedDriver } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { logDebug } from './logUtils';
+import { processFieldValue } from './statusUtils';
 
 /**
  * Process orders and identify issues
@@ -35,9 +36,7 @@ export const processOrdersForVerification = (
     // First, ensure we handle trip number validation correctly
     // Safely access properties with null checking
     const rawTripNumber = order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber;
-    const tripNumberAsString = typeof rawTripNumber === 'object' 
-      ? String((rawTripNumber as any)?.value || '') 
-      : String(rawTripNumber || '');
+    const tripNumberAsString = processFieldValue(rawTripNumber);
     
     const hasTripNumber = !isEmptyValue(rawTripNumber);
     const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(tripNumberAsString);
@@ -94,9 +93,7 @@ export const processOrdersForVerification = (
     
     // Similar enhanced check for driver - handle all possible types safely
     const rawDriver = order.driver === undefined || order.driver === null ? '' : order.driver;
-    const driverAsString = typeof rawDriver === 'object' 
-      ? String((rawDriver as any)?.value || '') 
-      : String(rawDriver || '');
+    const driverAsString = processFieldValue(rawDriver);
     
     const hasValidDriver = !isEmptyValue(rawDriver) && !isUnassignedDriver(driverAsString);
     
@@ -153,7 +150,7 @@ export const processOrdersForVerification = (
   
   // Find all unique trip numbers for suggestions (excluding noise values)
   const allTripNumbers = processedOrders
-    .map(o => o.tripNumber)
+    .map(o => o.tripNumber ?? '')
     .filter((value): value is string => 
       typeof value === 'string' && 
       value.trim() !== '' && 
@@ -162,7 +159,7 @@ export const processOrdersForVerification = (
   
   // Find all unique drivers for suggestions
   const allDrivers = processedOrders
-    .map(o => o.driver)
+    .map(o => o.driver ?? '')
     .filter((value): value is string => 
       typeof value === 'string' && 
       value.trim() !== '' && 

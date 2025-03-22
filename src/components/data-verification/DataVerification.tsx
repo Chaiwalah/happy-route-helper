@@ -7,6 +7,7 @@ import { VerificationSidebar } from './VerificationSidebar';
 import { useOrderVerification } from './hooks/useOrderVerification';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { processFieldValue } from './hooks/useOrderVerification/statusUtils';
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
@@ -25,9 +26,13 @@ export function DataVerification({
   const initializedOrders = orders.map(order => ({
     ...order,
     // Make sure tripNumber is not undefined or null
-    tripNumber: order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber,
+    tripNumber: order.tripNumber !== undefined && order.tripNumber !== null 
+      ? processFieldValue(order.tripNumber) 
+      : '',
     // Make sure driver is not undefined or null
-    driver: order.driver === undefined || order.driver === null ? '' : order.driver,
+    driver: order.driver !== undefined && order.driver !== null 
+      ? processFieldValue(order.driver) 
+      : 'Unassigned',
     // Ensure missingFields exists
     missingFields: order.missingFields || []
   }));

@@ -4,6 +4,7 @@ import { isEmptyValue, isUnassignedDriver, validateField } from './validationUti
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { logDebug } from './logUtils';
 import { toast } from '@/components/ui/use-toast';
+import { processFieldValue } from './statusUtils';
 
 /**
  * Update the order with the new field value
@@ -44,7 +45,7 @@ export const updateOrder = async (
     // Update the field
     if (fieldName === 'tripNumber') {
       // Store previous value for logging
-      const previousValue = updatedOrder.tripNumber;
+      const previousValue = processFieldValue(updatedOrder.tripNumber);
       
       // Set the new value
       updatedOrder.tripNumber = value;
@@ -69,7 +70,7 @@ export const updateOrder = async (
       
     } else if (fieldName === 'driver') {
       // Store previous value for logging
-      const previousValue = updatedOrder.driver;
+      const previousValue = processFieldValue(updatedOrder.driver);
       
       // Set the new value
       updatedOrder.driver = value;

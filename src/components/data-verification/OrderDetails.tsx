@@ -8,6 +8,7 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FieldValidationStatus } from './hooks/useOrderVerification';
+import { processFieldValue } from './hooks/useOrderVerification/statusUtils';
 
 interface OrderDetailsProps {
   selectedOrder: DeliveryOrder | null;
@@ -61,22 +62,26 @@ export function OrderDetails({
     );
   }
 
-  // Enhanced check for trip number validity - including N/A values
-  const isTripNumberNoise = selectedOrder.tripNumber ? 
-    isNoiseOrTestTripNumber(selectedOrder.tripNumber) : false;
+  // Enhanced check for trip number validity with proper value processing
+  const processedTripNumber = processFieldValue(selectedOrder.tripNumber);
+  const isTripNumberNoise = processedTripNumber ? 
+    isNoiseOrTestTripNumber(processedTripNumber) : false;
     
-  const isTripNumberNA = selectedOrder.tripNumber ? 
-    (selectedOrder.tripNumber.trim().toLowerCase() === 'n/a' || 
-     selectedOrder.tripNumber.trim().toLowerCase() === 'na' || 
-     selectedOrder.tripNumber.trim().toLowerCase() === 'none') : false;
+  const isTripNumberNA = processedTripNumber ? 
+    (processedTripNumber.trim().toLowerCase() === 'n/a' || 
+     processedTripNumber.trim().toLowerCase() === 'na' || 
+     processedTripNumber.trim().toLowerCase() === 'none') : false;
+  
+  // Safe access to missingFields with default empty array
+  const missingFields = selectedOrder.missingFields || [];
     
   // Get safe string values for display, ensuring they're never undefined
-  const tripNumberValue = selectedOrder.tripNumber || '';
-  const driverValue = selectedOrder.driver || '';
-  const pickupValue = selectedOrder.pickup || '';
-  const dropoffValue = selectedOrder.dropoff || '';
-  const readyTimeValue = selectedOrder.exReadyTime || '';
-  const deliveryTimeValue = selectedOrder.exDeliveryTime || '';
+  const tripNumberValue = processFieldValue(selectedOrder.tripNumber);
+  const driverValue = processFieldValue(selectedOrder.driver);
+  const pickupValue = processFieldValue(selectedOrder.pickup);
+  const dropoffValue = processFieldValue(selectedOrder.dropoff);
+  const readyTimeValue = processFieldValue(selectedOrder.exReadyTime);
+  const deliveryTimeValue = processFieldValue(selectedOrder.exDeliveryTime);
   
   // Enhanced debug information
   console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
@@ -86,7 +91,7 @@ export function OrderDetails({
     driver: driverValue || 'EMPTY',
     editingField: editingField || 'NONE',
     fieldValue: fieldValue || 'EMPTY',
-    missingFields: selectedOrder.missingFields || []
+    missingFields: missingFields
   });
   
   return (
@@ -115,7 +120,7 @@ export function OrderDetails({
                   isError={!tripNumberValue || 
                            tripNumberValue.trim() === '' || 
                            isTripNumberNA ||
-                           selectedOrder.missingFields.includes('tripNumber')}
+                           missingFields.includes('tripNumber')}
                   isNoise={isTripNumberNoise}
                   isSaving={isSavingField}
                   suggestedValues={suggestedTripNumbers}
@@ -146,8 +151,8 @@ export function OrderDetails({
                   isEditing={editingField === 'driver'}
                   isError={!driverValue || 
                            driverValue.trim() === '' || 
-                           driverValue === 'Unassigned' ||
-                           selectedOrder.missingFields.includes('driver')}
+                           driverValue.toLowerCase() === 'unassigned' ||
+                           missingFields.includes('driver')}
                   isSaving={isSavingField}
                   suggestedValues={suggestedDrivers}
                   validationStatus={getFieldValidationStatus('driver', editingField === 'driver' ? fieldValue : driverValue)}

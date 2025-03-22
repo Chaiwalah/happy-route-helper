@@ -7,13 +7,21 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 /**
  * Process a value that might be an object representation
  */
-const processFieldValue = (value: any): string => {
+export const processFieldValue = (value: any): string => {
   if (value === undefined || value === null) return '';
   
-  if (typeof value === 'object' && value !== null && 'value' in value) {
-    return String(value.value || '');
+  if (typeof value === 'object' && value !== null) {
+    // Handle object with _type property set to "undefined"
+    if (value._type === 'undefined') return '';
+    
+    // Handle object with value property
+    if ('value' in value) {
+      const objValue = value.value;
+      return objValue === undefined || objValue === null ? '' : String(objValue);
+    }
   }
   
+  // Handle primitive values by converting to string
   return String(value);
 };
 
