@@ -50,7 +50,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       toast({
         title: `${detectedIssues.length} issue${detectedIssues.length > 1 ? 's' : ''} detected`,
         description: "Check the Issues tab for details",
-        variant: "warning",
+        variant: "destructive",  // Changed from "warning" to "destructive"
       });
     } else {
       toast({
