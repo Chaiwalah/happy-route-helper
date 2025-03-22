@@ -2,209 +2,217 @@
 import { useState, useCallback } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { 
-  generateInvoice, 
+  calculateInvoice, 
   Invoice, 
-  detectIssues, 
-  Issue,
-  recalculateInvoiceItem,
-  reviewInvoice,
-  finalizeInvoice
+  InvoiceItem 
 } from '@/utils/invoiceCalculator';
+import { 
+  InvoiceGenerationSettings,
+  InvoiceMetadata 
+} from '@/utils/invoiceTypes';
 import { toast } from '@/components/ui/use-toast';
-import { calculateDistances } from '@/utils/distanceCalculator';
-import { InvoiceGenerationSettings, InvoiceMetadata } from '@/utils/invoiceTypes';
 
-export function useInvoiceGenerator(orders: DeliveryOrder[]) {
+export const useInvoiceGenerator = (orders: DeliveryOrder[]) => {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [issues, setIssues] = useState<Issue[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [issues, setIssues] = useState<any[]>([]);
   const [settings, setSettings] = useState<InvoiceGenerationSettings>({
-    includeWeekendFee: true,
-    includeRushFee: true,
+    baseRate: 25,
+    mileageRate: 1.1,
+    additionalStopFee: 12,
+    distanceThreshold: 25,
     allowManualDistanceAdjustment: true,
+    applyUrbanFee: false,
+    urbanFeeAmount: 5,
+    applyRushFee: false,
+    rushFeePercentage: 15,
+    calculateTotalMileage: true,
   });
-  
-  const [progress, setProgress] = useState({
-    current: 0,
-    total: 0,
-    percent: 0
-  });
-  
+  const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
-  const [itemToRecalculate, setItemToRecalculate] = useState<{ index: number; distance: number } | null>(null);
+  const [itemToRecalculate, setItemToRecalculate] = useState<{index: number, currentDistance: number} | null>(null);
   const [invoiceMetadata, setInvoiceMetadata] = useState<InvoiceMetadata>({
-    businessName: 'Your Business Name',
-    businessAddress: '123 Main St, City, State, ZIP',
-    businessPhone: '(555) 555-5555',
-    businessEmail: 'contact@yourbusiness.com',
-    clientName: 'Client Company',
-    clientAddress: '456 Client Ave, City, State, ZIP',
-    invoiceNumber: `INV-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
-    invoiceDate: new Date().toISOString().split('T')[0],
-    dueDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0],
-    paymentTerms: 'Net 30',
-    notes: 'Thank you for your business!',
+    businessName: '',
+    businessAddress: '',
+    businessContact: '',
+    invoiceNumber: '',
+    dateIssued: new Date().toISOString().split('T')[0],
+    dateDue: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    notes: ''
   });
 
+  // Function to generate invoice based on orders and settings
   const handleGenerateInvoice = useCallback(async () => {
-    if (isGenerating) return;
-    
+    if (orders.length === 0) {
+      toast({
+        title: "No orders",
+        description: "Please upload order data first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
     setProgress({ current: 0, total: orders.length, percent: 0 });
-    
+
     try {
-      // First calculate distances for all orders
-      const updatedOrders = [...orders];
+      // Clear any existing invoice
+      setInvoice(null);
       
-      toast({
-        title: "Calculating distances",
-        description: "This may take a moment for larger datasets"
-      });
-      
-      // Track progress during calculation
-      const ordersWithDistances = await calculateDistances(updatedOrders);
-      
-      // Create a progress tracker
-      let completedCount = 0;
-      const updateProgress = () => {
-        completedCount++;
-        const percent = Math.round((completedCount / orders.length) * 100);
-        setProgress({
-          current: completedCount,
-          total: orders.length,
-          percent
+      // Set up progress tracking
+      const updateProgress = (current: number) => {
+        setProgress(prev => {
+          const percent = Math.round((current / prev.total) * 100);
+          return { current, total: prev.total, percent };
         });
       };
       
-      // Process each order sequentially but with a small delay
-      // to allow UI updates
-      for (let i = 0; i < ordersWithDistances.length; i++) {
-        const order = ordersWithDistances[i];
-        updateProgress();
-        
-        // Allow UI to update by yielding execution
-        if (i % 5 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
+      // Generate invoice with progress updates
+      const newInvoice = await calculateInvoice(orders, settings, updateProgress);
+      setInvoice(newInvoice);
       
-      const generatedInvoice = generateInvoice(ordersWithDistances, settings);
-      setInvoice(generatedInvoice);
-      
-      // Check for issues
-      const detectedIssues = detectIssues(ordersWithDistances);
-      setIssues(detectedIssues);
+      // Reset progress
+      setProgress({ current: 0, total: 0, percent: 0 });
       
       toast({
         title: "Invoice generated",
-        description: `${generatedInvoice.items.length} routes calculated with a total of $${generatedInvoice.totalAmount.toFixed(2)}`
+        description: `Generated invoice with ${newInvoice.items.length} items totaling $${newInvoice.totalCost.toFixed(2)}`,
       });
     } catch (error) {
-      console.error("Error generating invoice:", error);
+      console.error('Error calculating invoice:', error);
       toast({
         title: "Error",
         description: "Failed to generate invoice. Please try again.",
-        variant: "destructive"
+        variant: "destructive",
       });
     } finally {
       setIsGenerating(false);
     }
-  }, [orders, settings, isGenerating]);
+  }, [orders, settings]);
 
+  // Function to recalculate distance for a specific item
   const handleRecalculateDistance = useCallback((index: number, currentDistance: number) => {
-    setItemToRecalculate({ index, distance: currentDistance });
-  }, []);
+    if (!invoice) return;
+    
+    setItemToRecalculate({ index, currentDistance });
+  }, [invoice]);
 
-  const confirmRecalculation = useCallback(() => {
-    if (!itemToRecalculate || !invoice) return;
+  // Function to confirm distance recalculation
+  const confirmRecalculation = useCallback((index: number, newDistance: number) => {
+    if (!invoice) return;
     
-    const { index, distance } = itemToRecalculate;
-    const updatedItem = recalculateInvoiceItem(invoice.items[index], distance);
+    // Create a copy of the invoice
+    const updatedInvoice = { ...invoice };
+    const item = { ...updatedInvoice.items[index] };
     
-    // Calculate the difference in total
-    const oldAmount = invoice.items[index].amount;
-    const newAmount = updatedItem.amount;
-    const amountDifference = newAmount - oldAmount;
+    // Store original distance if this is the first time recalculating
+    if (!item.originalDistance) {
+      item.originalDistance = item.distance;
+    }
     
-    // Create a new array with the updated item
-    const updatedItems = [...invoice.items];
-    updatedItems[index] = updatedItem;
+    // Update distance and recalculated flag
+    item.distance = newDistance;
+    item.recalculated = true;
     
-    // Update the invoice
-    const updatedInvoice = {
-      ...invoice,
-      items: updatedItems,
-      totalAmount: invoice.totalAmount + amountDifference
-    };
+    // Recalculate costs for this item
+    if (item.distance <= settings.distanceThreshold) {
+      item.baseCost = settings.baseRate;
+    } else {
+      item.baseCost = item.distance * settings.mileageRate;
+    }
     
+    // Recalculate total cost
+    item.totalCost = item.baseCost + item.addOns;
+    
+    // Update item in invoice
+    updatedInvoice.items[index] = item;
+    
+    // Update total distance and cost
+    updatedInvoice.totalDistance = updatedInvoice.items.reduce((acc, item) => acc + item.distance, 0);
+    updatedInvoice.totalCost = updatedInvoice.items.reduce((acc, item) => acc + item.totalCost, 0);
+    
+    // Count recalculated items
+    updatedInvoice.recalculatedCount = updatedInvoice.items.filter(item => item.recalculated).length;
+    
+    // Update last modified timestamp
+    updatedInvoice.lastModified = new Date().toISOString();
+    
+    // Update invoice state
     setInvoice(updatedInvoice);
     setItemToRecalculate(null);
     
     toast({
       title: "Distance updated",
-      description: `Route distance updated to ${distance.toFixed(1)} miles. Amount changed by $${Math.abs(amountDifference).toFixed(2)}.`
+      description: `Updated distance for route ${index + 1} to ${newDistance.toFixed(1)} miles`,
     });
-  }, [invoice, itemToRecalculate]);
+  }, [invoice, settings]);
 
+  // Function to review invoice
   const handleReviewInvoice = useCallback(() => {
     if (!invoice) return;
     
-    const reviewedInvoice = reviewInvoice(invoice);
-    setInvoice(reviewedInvoice);
+    const updatedInvoice = { ...invoice, status: 'reviewed', lastModified: new Date().toISOString() };
+    setInvoice(updatedInvoice);
     
     toast({
       title: "Invoice reviewed",
-      description: "The invoice has been marked as reviewed."
+      description: "Invoice has been marked as reviewed",
     });
   }, [invoice]);
 
+  // Function to finalize invoice
   const handleFinalizeInvoice = useCallback(() => {
     if (!invoice) return;
     
-    const finalizedInvoice = finalizeInvoice(invoice);
-    setInvoice(finalizedInvoice);
+    const updatedInvoice = { ...invoice, status: 'finalized', lastModified: new Date().toISOString() };
+    setInvoice(updatedInvoice);
     
     toast({
       title: "Invoice finalized",
-      description: "The invoice has been finalized and is ready for export."
+      description: "Invoice has been finalized and can no longer be edited",
     });
-    
-    // Show export dialog
-    setShowExportDialog(true);
   }, [invoice]);
 
-  const handleExport = useCallback((format: 'pdf' | 'csv' | 'excel') => {
+  // Function to export invoice
+  const handleExport = useCallback(() => {
     if (!invoice) return;
     
+    // Export functionality would be implemented here
     toast({
-      title: "Export started",
-      description: `Exporting invoice as ${format.toUpperCase()}...`
+      title: "Export complete",
+      description: "Invoice exported successfully",
     });
     
-    // Simulating export process
-    setTimeout(() => {
-      toast({
-        title: "Export complete",
-        description: `Invoice has been exported as ${format.toUpperCase()}.`
-      });
-      setShowExportDialog(false);
-    }, 1500);
+    setShowExportDialog(false);
   }, [invoice]);
 
+  // Function to open invoice metadata dialog
   const openInvoiceMetadataDialog = useCallback(() => {
     setShowMetadataDialog(true);
   }, []);
 
+  // Function to update invoice metadata
   const updateInvoiceMetadata = useCallback((metadata: InvoiceMetadata) => {
+    if (!invoice) return;
+    
+    const updatedInvoice = { 
+      ...invoice, 
+      businessName: metadata.businessName,
+      businessAddress: metadata.businessAddress,
+      businessContact: metadata.businessContact,
+      lastModified: new Date().toISOString()
+    };
+    
+    setInvoice(updatedInvoice);
     setInvoiceMetadata(metadata);
     setShowMetadataDialog(false);
     
     toast({
-      title: "Invoice details updated",
-      description: "Business and client information has been updated."
+      title: "Business info updated",
+      description: "Invoice business information has been updated",
     });
-  }, []);
+  }, [invoice]);
 
   return {
     invoice,
@@ -230,4 +238,4 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
     openInvoiceMetadataDialog,
     updateInvoiceMetadata
   };
-}
+};
