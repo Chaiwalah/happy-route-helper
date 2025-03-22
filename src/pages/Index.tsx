@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue, InvoiceGenerationSettings } from '@/utils/invoiceTypes';
 import { detectIssues } from '@/utils/issueDetector';
@@ -360,12 +360,14 @@ const Index = () => {
       </main>
       
       {/* Data Verification Dialog for Manual Corrections */}
-      <DataVerification 
-        orders={orders}
-        open={showDataVerification}
-        onOpenChange={setShowDataVerification}
-        onOrdersVerified={handleOrdersUpdated}
-      />
+      {orders.length > 0 && (
+        <DataVerification 
+          orders={orders}
+          open={showDataVerification}
+          onOpenChange={setShowDataVerification}
+          onOrdersVerified={handleOrdersUpdated}
+        />
+      )}
       
       {/* Confirmation Dialog for Removing Orders */}
       <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>

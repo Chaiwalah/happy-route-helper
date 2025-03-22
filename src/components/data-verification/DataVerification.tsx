@@ -1,6 +1,6 @@
-
 "use client"
 
+import React from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { OrderDetails } from './OrderDetails';
 import { VerificationSidebar } from './VerificationSidebar';
@@ -55,7 +55,7 @@ export function DataVerification({
     getFieldValidationStatus
   } = useOrderVerification({ 
     orders: initializedOrders, 
-    onOrdersVerified: onOrdersVerified 
+    onOrdersVerified 
   });
 
   // Add some console logging to check what's happening
@@ -84,20 +84,22 @@ export function DataVerification({
               />
             </div>
             <div className="w-full md:w-2/3 p-4 overflow-auto max-h-[60vh] md:max-h-full">
-              <OrderDetails
-                selectedOrder={selectedOrder}
-                editingField={editingField}
-                fieldValue={fieldValue}
-                onFieldEdit={handleFieldEdit}
-                onFieldValueChange={handleFieldValueChange}
-                onFieldUpdate={handleFieldUpdate}
-                ordersWithTripNumberIssues={ordersWithIssues}
-                isSavingField={isSavingField}
-                validationMessage={validationMessage}
-                suggestedTripNumbers={suggestedTripNumbers}
-                suggestedDrivers={suggestedDrivers}
-                getFieldValidationStatus={getFieldValidationStatus}
-              />
+              {selectedOrder && (
+                <OrderDetails
+                  selectedOrder={selectedOrder}
+                  editingField={editingField}
+                  fieldValue={fieldValue}
+                  onFieldEdit={handleFieldEdit}
+                  onFieldValueChange={handleFieldValueChange}
+                  onFieldUpdate={handleFieldUpdate}
+                  ordersWithTripNumberIssues={ordersWithIssues}
+                  isSavingField={isSavingField}
+                  validationMessage={validationMessage}
+                  suggestedTripNumbers={suggestedTripNumbers}
+                  suggestedDrivers={suggestedDrivers}
+                  getFieldValidationStatus={getFieldValidationStatus}
+                />
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -126,20 +128,22 @@ export function DataVerification({
         />
       </div>
       <div className="w-full md:w-2/3 p-4 overflow-auto h-[400px] md:h-full">
-        <OrderDetails
-          selectedOrder={selectedOrder}
-          editingField={editingField}
-          fieldValue={fieldValue}
-          onFieldEdit={handleFieldEdit}
-          onFieldValueChange={handleFieldValueChange}
-          onFieldUpdate={handleFieldUpdate}
-          ordersWithTripNumberIssues={ordersWithIssues}
-          isSavingField={isSavingField}
-          validationMessage={validationMessage}
-          suggestedTripNumbers={suggestedTripNumbers}
-          suggestedDrivers={suggestedDrivers}
-          getFieldValidationStatus={getFieldValidationStatus}
-        />
+        {selectedOrder && (
+          <OrderDetails
+            selectedOrder={selectedOrder}
+            editingField={editingField}
+            fieldValue={fieldValue}
+            onFieldEdit={handleFieldEdit}
+            onFieldValueChange={handleFieldValueChange}
+            onFieldUpdate={handleFieldUpdate}
+            ordersWithTripNumberIssues={ordersWithIssues}
+            isSavingField={isSavingField}
+            validationMessage={validationMessage}
+            suggestedTripNumbers={suggestedTripNumbers}
+            suggestedDrivers={suggestedDrivers}
+            getFieldValidationStatus={getFieldValidationStatus}
+          />
+        )}
       </div>
       <div className="p-4 border-t flex justify-end">
         <Button onClick={handleOrdersApprove}>
