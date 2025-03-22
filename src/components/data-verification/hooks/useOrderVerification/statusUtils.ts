@@ -1,19 +1,35 @@
+
 import { DeliveryOrder } from '@/utils/csvParser';
 import { FieldValidationStatus } from './types';
 import { isEmptyValue, isUnassignedDriver } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
 /**
+ * Process a value that might be an object representation
+ */
+const processFieldValue = (value: any): string => {
+  if (value === undefined || value === null) return '';
+  
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return String(value.value || '');
+  }
+  
+  return String(value);
+};
+
+/**
  * Get validation status for an order
  */
 export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warning' | 'error' => {
   // Check for trip number issues - most critical
-  if (isEmptyValue(order.tripNumber) || isNoiseOrTestTripNumber(order.tripNumber || '')) {
+  const tripNumberValue = processFieldValue(order.tripNumber);
+  if (isEmptyValue(order.tripNumber) || isNoiseOrTestTripNumber(tripNumberValue)) {
     return 'error';
   }
   
   // Check for driver issues
-  if (isEmptyValue(order.driver) || isUnassignedDriver(order.driver)) {
+  const driverValue = processFieldValue(order.driver);
+  if (isEmptyValue(order.driver) || isUnassignedDriver(driverValue)) {
     return 'warning';
   }
   
@@ -35,7 +51,10 @@ export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warni
  * Get validation status for a specific field
  */
 export const getFieldValidationStatus = (fieldName: string, value: string): FieldValidationStatus => {
-  if (isEmptyValue(value)) {
+  // Process the value to handle object representations
+  const processedValue = processFieldValue(value);
+  
+  if (isEmptyValue(processedValue)) {
     // Critical fields
     if (fieldName === 'tripNumber' || 
         fieldName === 'driver' || 
@@ -51,24 +70,29 @@ export const getFieldValidationStatus = (fieldName: string, value: string): Fiel
   // Check for trip number specific validation
   if (fieldName === 'tripNumber') {
     // 'N/A' values should be treated as missing (error)
-    if (value.toLowerCase() === 'n/a' || value.toLowerCase() === 'na' || value.toLowerCase() === 'none') {
+    const lowerValue = processedValue.toLowerCase();
+    if (lowerValue === 'n/a' || 
+        lowerValue === 'na' || 
+        lowerValue === 'none' || 
+        lowerValue === 'null' || 
+        lowerValue === 'undefined') {
       return 'error';
     }
     
     // Check for noise/test values
-    if (isNoiseOrTestTripNumber(value)) {
+    if (isNoiseOrTestTripNumber(processedValue)) {
       return 'error';
     }
     
     // Validate proper trip number format (e.g. TR-123456)
     const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
-    if (!tripNumberPattern.test(value.trim())) {
+    if (!tripNumberPattern.test(processedValue.trim())) {
       return 'warning';
     }
   }
   
   // Driver should not be "Unassigned"
-  if (fieldName === 'driver' && isUnassignedDriver(value)) {
+  if (fieldName === 'driver' && isUnassignedDriver(processedValue)) {
     return 'error';
   }
   

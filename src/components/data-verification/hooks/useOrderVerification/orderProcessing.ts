@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from '@/utils/csvParser';
 import { isEmptyValue, isUnassignedDriver } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
@@ -34,34 +33,48 @@ export const processOrdersForVerification = (
     }
     
     // First, ensure we handle trip number validation correctly
-    const hasTripNumber = !isEmptyValue(order.tripNumber);
-    const isTripNumberNoise = hasTripNumber && 
-      isNoiseOrTestTripNumber(String(typeof order.tripNumber === 'object' ? 
-        (order.tripNumber as any)?.value || '' : order.tripNumber || ''));
+    // Safely access properties with null checking
+    const rawTripNumber = order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber;
+    const tripNumberAsString = typeof rawTripNumber === 'object' 
+      ? String((rawTripNumber as any)?.value || '') 
+      : String(rawTripNumber || '');
+    
+    const hasTripNumber = !isEmptyValue(rawTripNumber);
+    const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(tripNumberAsString);
     
     // Log raw trip number for debugging
     logDebug(`Raw trip number for ${order.id}:`, {
-      value: order.tripNumber,
-      type: typeof order.tripNumber
+      value: rawTripNumber,
+      type: typeof rawTripNumber,
+      asString: tripNumberAsString
     });
     
     // Log trip number validation for all orders
     logDebug(`Trip Number Validation for ${order.id}:`, {
-      rawValue: order.tripNumber,
+      rawValue: rawTripNumber,
       hasTripNumber,
       isTripNumberNoise,
-      isEmptyValue: isEmptyValue(order.tripNumber)
+      isEmptyValue: isEmptyValue(rawTripNumber),
+      tripNumberAsString
     });
     
-    // Normalize the trip number value
-    if (isEmptyValue(order.tripNumber)) {
-      // If trip number is undefined, null, or an undefined object, set it to empty string
+    // Normalize the trip number value - handle all possible types
+    if (rawTripNumber === null || rawTripNumber === undefined || isEmptyValue(rawTripNumber)) {
+      // Handle null, undefined, or empty values
       order.tripNumber = '';
-    } else if (typeof order.tripNumber === 'object' && order.tripNumber !== null) {
-      // If it's a non-null object, try to extract the value
-      order.tripNumber = String((order.tripNumber as any).value || '');
-    } else if (order.tripNumber === null) {
-      // Explicit check for null
+    } else if (typeof rawTripNumber === 'object') {
+      // Handle object representation, safely extract value
+      const objValue = (rawTripNumber as any)?.value;
+      order.tripNumber = objValue === undefined || objValue === null || objValue === 'undefined' 
+        ? '' 
+        : String(objValue);
+    } else {
+      // Ensure string representation for other types
+      order.tripNumber = String(rawTripNumber);
+    }
+    
+    // Final normalization - empty strings for truly empty values
+    if (order.tripNumber === 'undefined' || order.tripNumber === 'null') {
       order.tripNumber = '';
     }
     
@@ -79,27 +92,44 @@ export const processOrdersForVerification = (
       }
     }
     
-    // Similar enhanced check for driver
-    const hasValidDriver = !isEmptyValue(order.driver) && !isUnassignedDriver(order.driver);
+    // Similar enhanced check for driver - handle all possible types safely
+    const rawDriver = order.driver === undefined || order.driver === null ? '' : order.driver;
+    const driverAsString = typeof rawDriver === 'object' 
+      ? String((rawDriver as any)?.value || '') 
+      : String(rawDriver || '');
+    
+    const hasValidDriver = !isEmptyValue(rawDriver) && !isUnassignedDriver(driverAsString);
     
     // Log driver validation for all orders
     logDebug(`Driver Validation for ${order.id}:`, {
-      rawValue: order.driver,
+      rawValue: rawDriver,
       hasValidDriver,
-      isEmptyValue: isEmptyValue(order.driver),
-      isUnassigned: isUnassignedDriver(order.driver)
+      isEmptyValue: isEmptyValue(rawDriver),
+      isUnassigned: isUnassignedDriver(driverAsString),
+      driverAsString
     });
     
-    // Normalize the driver value
-    if (isEmptyValue(order.driver)) {
-      // If driver is undefined, null, or an undefined object, set to 'Unassigned'
+    // Normalize the driver value - handle all possible types
+    if (rawDriver === null || rawDriver === undefined || isEmptyValue(rawDriver)) {
+      // Handle null, undefined, or empty values
       order.driver = 'Unassigned';
-    } else if (typeof order.driver === 'object' && order.driver !== null) {
-      // If it's a non-null object, try to extract the value
-      const driverValue = (order.driver as any).value || '';
-      order.driver = driverValue === '' ? 'Unassigned' : String(driverValue);
-    } else if (order.driver === null) {
-      // Explicit check for null
+    } else if (typeof rawDriver === 'object') {
+      // Handle object representation, safely extract value
+      const objValue = (rawDriver as any)?.value;
+      const valueAsString = objValue === undefined || objValue === null || objValue === 'undefined' 
+        ? '' 
+        : String(objValue);
+      
+      // Only set to 'Unassigned' if value is truly empty
+      order.driver = valueAsString === '' ? 'Unassigned' : valueAsString;
+    } else {
+      // Non-empty string or other primitive - keep as is or convert to string
+      const driverStr = String(rawDriver);
+      order.driver = driverStr === '' ? 'Unassigned' : driverStr;
+    }
+    
+    // Final normalization - ensure 'Unassigned' for truly empty values
+    if (order.driver === 'undefined' || order.driver === 'null' || order.driver === '') {
       order.driver = 'Unassigned';
     }
     
@@ -125,7 +155,8 @@ export const processOrdersForVerification = (
   const allTripNumbers = processedOrders
     .map(o => o.tripNumber)
     .filter((value): value is string => 
-      !isEmptyValue(value) && 
+      typeof value === 'string' && 
+      value.trim() !== '' && 
       !isNoiseOrTestTripNumber(value)
     );
   
@@ -133,7 +164,9 @@ export const processOrdersForVerification = (
   const allDrivers = processedOrders
     .map(o => o.driver)
     .filter((value): value is string => 
-      !isEmptyValue(value) && !isUnassignedDriver(value)
+      typeof value === 'string' && 
+      value.trim() !== '' && 
+      value !== 'Unassigned'
     );
   
   // Set unique suggested values for autocomplete
