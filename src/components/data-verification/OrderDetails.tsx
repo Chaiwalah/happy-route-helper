@@ -61,9 +61,14 @@ export function OrderDetails({
     );
   }
 
-  // Check if trip number is a noise/test trip number
+  // Enhanced check for trip number validity - including N/A values
   const isTripNumberNoise = selectedOrder.tripNumber ? 
     isNoiseOrTestTripNumber(selectedOrder.tripNumber) : false;
+    
+  const isTripNumberNA = selectedOrder.tripNumber ? 
+    (selectedOrder.tripNumber.trim().toLowerCase() === 'n/a' || 
+     selectedOrder.tripNumber.trim().toLowerCase() === 'na' || 
+     selectedOrder.tripNumber.trim().toLowerCase() === 'none') : false;
     
   // Get safe string values for display, ensuring they're never undefined
   const tripNumberValue = selectedOrder.tripNumber || '';
@@ -73,12 +78,15 @@ export function OrderDetails({
   const readyTimeValue = selectedOrder.exReadyTime || '';
   const deliveryTimeValue = selectedOrder.exDeliveryTime || '';
   
-  // Debug the field values
+  // Enhanced debug information
   console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
     tripNumber: tripNumberValue || 'EMPTY',
+    tripNumberIsNA: isTripNumberNA,
+    tripNumberIsNoise: isTripNumberNoise,
     driver: driverValue || 'EMPTY',
     editingField: editingField || 'NONE',
-    fieldValue: fieldValue || 'EMPTY'
+    fieldValue: fieldValue || 'EMPTY',
+    missingFields: selectedOrder.missingFields || []
   });
   
   return (
@@ -104,7 +112,10 @@ export function OrderDetails({
                   fieldName="tripNumber"
                   value={editingField === 'tripNumber' ? fieldValue : tripNumberValue}
                   isEditing={editingField === 'tripNumber'}
-                  isError={!tripNumberValue || tripNumberValue.trim() === ''}
+                  isError={!tripNumberValue || 
+                           tripNumberValue.trim() === '' || 
+                           isTripNumberNA ||
+                           selectedOrder.missingFields.includes('tripNumber')}
                   isNoise={isTripNumberNoise}
                   isSaving={isSavingField}
                   suggestedValues={suggestedTripNumbers}
@@ -118,7 +129,7 @@ export function OrderDetails({
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-xs">
               <p>Trip Numbers are critical for route organization. They should follow the format TR-[number] or be a clear identifier. 
-              Values like "TEST", "N/A", or single numbers may be filtered out as noise.</p>
+              Values like "TEST", "N/A", or single numbers may be flagged as requiring verification.</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -133,6 +144,10 @@ export function OrderDetails({
                   fieldName="driver"
                   value={editingField === 'driver' ? fieldValue : driverValue}
                   isEditing={editingField === 'driver'}
+                  isError={!driverValue || 
+                           driverValue.trim() === '' || 
+                           driverValue === 'Unassigned' ||
+                           selectedOrder.missingFields.includes('driver')}
                   isSaving={isSavingField}
                   suggestedValues={suggestedDrivers}
                   validationStatus={getFieldValidationStatus('driver', editingField === 'driver' ? fieldValue : driverValue)}

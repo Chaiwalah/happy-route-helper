@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { OrderRoute } from './invoiceTypes';
 
@@ -23,14 +24,22 @@ const safeFormatDate = (dateString: string | undefined): string => {
 export const isNoiseOrTestTripNumber = (tripNumber: string | undefined): boolean => {
   if (!tripNumber) return false;
   
-  const trimmedValue = tripNumber.trim();
+  const trimmedValue = tripNumber.trim().toLowerCase();
   
   // List of known test/noise trip number values to ignore
-  const noiseValues = ['24', '25', 'TEST', 'NOISE', 'test', 'noise', 'N/A'];
+  const noiseValues = ['24', '25', 'test', 'noise'];
   
   // Check if the trip number is in our noise list
   if (noiseValues.includes(trimmedValue)) {
+    console.log(`Trip number "${tripNumber}" identified as noise value`);
     return true;
+  }
+  
+  // N/A values are not noise, they're missing values that need to be fixed in verification
+  // We've changed this - previously 'n/a' was treated as noise
+  if (trimmedValue === 'n/a' || trimmedValue === 'na' || trimmedValue === 'none') {
+    console.log(`Trip number "${tripNumber}" identified as missing (N/A)`);
+    return false; // Changed from true to false - we want to flag these for verification
   }
   
   // Additional checks could be added here for other patterns
@@ -223,7 +232,19 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
 
 // New function to filter out orders with missing trip numbers
 export const removeOrdersWithMissingTripNumbers = (orders: DeliveryOrder[]): DeliveryOrder[] => {
-  const filteredOrders = orders.filter(order => order.tripNumber && order.tripNumber.trim() !== '');
+  const filteredOrders = orders.filter(order => {
+    const hasTripNumber = order.tripNumber && 
+                        order.tripNumber.trim() !== '' && 
+                        order.tripNumber.toLowerCase() !== 'n/a' &&
+                        order.tripNumber.toLowerCase() !== 'na' &&
+                        order.tripNumber.toLowerCase() !== 'none';
+                        
+    if (!hasTripNumber) {
+      console.log(`Removing order ${order.id} due to missing or invalid trip number: "${order.tripNumber || 'undefined'}"`);
+    }
+    
+    return hasTripNumber;
+  });
   
   const removedCount = orders.length - filteredOrders.length;
   if (removedCount > 0) {

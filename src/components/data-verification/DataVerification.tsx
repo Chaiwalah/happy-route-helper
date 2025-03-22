@@ -9,14 +9,14 @@ import { Button } from '@/components/ui/button';
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
-  onOrdersUpdate: (updatedOrders: DeliveryOrder[]) => void;
+  onOrdersVerified: (updatedOrders: DeliveryOrder[]) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
 export function DataVerification({
   orders,
-  onOrdersUpdate,
+  onOrdersVerified,
   open,
   onOpenChange
 }: DataVerificationProps) {
@@ -38,7 +38,7 @@ export function DataVerification({
     getFieldValidationStatus
   } = useOrderVerification({ 
     orders, 
-    onOrdersVerified: onOrdersUpdate 
+    onOrdersVerified: onOrdersVerified 
   });
 
   // If Dialog props are provided, render in a Dialog

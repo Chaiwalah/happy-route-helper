@@ -75,7 +75,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     // Deep clone orders to avoid mutating original array
     const processedOrders = orders.map(order => {
       // Log raw order state for debugging
-      if (order.id === 'order-1' || order.id === 'order-2') {
+      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
         logDebug(`Raw Order ${order.id}:`, { 
           tripNumber: order.tripNumber || 'MISSING', 
           driver: order.driver || 'MISSING',
@@ -98,12 +98,13 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       const hasTripNumber = !isEmptyValue(order.tripNumber);
       const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(order.tripNumber!);
       
-      // Log trip number validation for sample orders
-      if (order.id === 'order-1' || order.id === 'order-2') {
+      // Log trip number validation for problematic orders
+      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
         logDebug(`Trip Number Validation for ${order.id}:`, {
           rawValue: order.tripNumber,
           hasTripNumber,
           isTripNumberNoise,
+          isEmptyValue: isEmptyValue(order.tripNumber),
           inMissingFields: order.missingFields.includes('tripNumber')
         });
       }
@@ -125,11 +126,12 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       // Similar enhanced check for driver
       const hasValidDriver = !isEmptyValue(order.driver);
       
-      // Log driver validation for sample orders
-      if (order.id === 'order-1' || order.id === 'order-2') {
+      // Log driver validation for problematic orders
+      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
         logDebug(`Driver Validation for ${order.id}:`, {
           rawValue: order.driver,
           hasValidDriver,
+          isEmptyValue: isEmptyValue(order.driver),
           inMissingFields: order.missingFields.includes('driver')
         });
       }
@@ -172,12 +174,14 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     setSuggestedDrivers([...new Set(allDrivers)].sort());
     
     logDebug(`Orders updated, count: ${processedOrders.length}, issues: ${ordersWithTripNumberIssues.length}`);
+    logDebug(`Orders with issues: ${ordersWithTripNumberIssues.map(o => o.id).join(', ')}`);
     
     setOrdersWithIssues(ordersWithTripNumberIssues);
     
     // If there are issues and no order is selected, select the first one
     if (ordersWithTripNumberIssues.length > 0 && !selectedOrderId) {
       setSelectedOrderId(ordersWithTripNumberIssues[0].id);
+      logDebug(`Auto-selecting first issue order: ${ordersWithTripNumberIssues[0].id}`);
     } else if (ordersWithTripNumberIssues.length === 0) {
       // Clear selection if no issues left
       setSelectedOrderId(null);
@@ -287,10 +291,12 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         if (!isEmpty && !isNoise) {
           // Valid trip number - remove from missing fields
           updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
+          logDebug(`Removed tripNumber from missingFields for ${orderId}`);
         } else {
           // Missing or invalid - add to missing fields
           if (!updatedOrder.missingFields.includes('tripNumber')) {
             updatedOrder.missingFields.push('tripNumber');
+            logDebug(`Added tripNumber to missingFields for ${orderId}`);
           }
         }
         
@@ -309,10 +315,12 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         if (!isEmpty) {
           // Valid driver - remove from missing fields
           updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'driver');
+          logDebug(`Removed driver from missingFields for ${orderId}`);
         } else {
           // Missing or invalid - add to missing fields
           if (!updatedOrder.missingFields.includes('driver')) {
             updatedOrder.missingFields.push('driver');
+            logDebug(`Added driver to missingFields for ${orderId}`);
           }
         }
         
@@ -431,13 +439,13 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     
     // Check for trip number specific validation
     if (fieldName === 'tripNumber') {
-      // Check for noise/test values
-      if (isNoiseOrTestTripNumber(value)) {
+      // 'N/A' values should be treated as missing (error)
+      if (value.toLowerCase() === 'n/a' || value.toLowerCase() === 'na' || value.toLowerCase() === 'none') {
         return 'error';
       }
       
-      // Check for N/A values
-      if (['n/a', 'na', 'none'].includes(value.toLowerCase())) {
+      // Check for noise/test values
+      if (isNoiseOrTestTripNumber(value)) {
         return 'error';
       }
       
