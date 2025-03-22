@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, ReactNode } from 'react';
@@ -80,10 +79,12 @@ export function OrderDetailField({
         return 'border-red-500 ring-red-500/20 bg-red-50 dark:bg-red-900/20';
       case 'warning':
         return 'border-amber-500 ring-amber-500/20 bg-amber-50 dark:bg-amber-900/20';
-      default:
+      case 'none':
         if (isError || isNoise) {
           return 'text-red-500 italic bg-red-50 dark:bg-red-900/10';
         }
+        return 'bg-muted/20';
+      default:
         return 'bg-muted/20';
     }
   };
