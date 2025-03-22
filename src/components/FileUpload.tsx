@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -74,7 +73,6 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       
       // Count orders with missing fields
       const ordersWithMissingFields = ordersWithDistances.filter(o => o.missingFields.length > 0);
-      const missingAddresses = ordersWithDistances.filter(o => o.missingFields.includes('address')).length;
       
       // Send data to parent component
       onDataParsed(ordersWithDistances);
