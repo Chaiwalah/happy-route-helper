@@ -94,7 +94,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
     const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
     const stops = routeOrders.length;
     
-    // Apply billing logic
+    // Apply billing logic with correct formulas
     let baseCost = 0;
     let addOns = 0;
     
@@ -124,9 +124,10 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       // Get individual order distance, default to 0 if not available
       const orderDistance = order.estimatedDistance || 0;
       
-      // For the invoice, we need to distribute the route cost among orders
-      // Simplest approach: divide equally among all orders in the route
-      const orderCost = routeCost / stops;
+      // Distribute the costs among orders
+      const perOrderBaseCost = baseCost / stops;
+      const perOrderAddOns = addOns / stops;
+      const perOrderCost = routeCost / stops;
       
       items.push({
         orderId: order.id,
@@ -136,9 +137,9 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
         distance: orderDistance,
         stops,
         routeType,
-        baseCost: baseCost / stops, // Distribute base cost equally
-        addOns: addOns / stops,     // Distribute add-ons equally
-        totalCost: orderCost
+        baseCost: perOrderBaseCost,
+        addOns: perOrderAddOns,
+        totalCost: perOrderCost
       });
     });
   });
