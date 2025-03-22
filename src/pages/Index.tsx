@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { toast } from '@/components/ui/use-toast';
 
 const Index = () => {
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -18,16 +19,36 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
 
   const handleDataParsed = (parsedOrders: DeliveryOrder[]) => {
+    if (parsedOrders.length === 0) {
+      toast({
+        title: "No orders found",
+        description: "The uploaded file doesn't contain any valid orders",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setOrders(parsedOrders);
     
     // Move to orders tab after successful upload
     if (parsedOrders.length > 0) {
       setActiveTab('orders');
+      toast({
+        title: "Upload successful",
+        description: `${parsedOrders.length} orders loaded successfully`,
+      });
     }
     
     // Check for potential issues
     const detectedIssues = detectIssues(parsedOrders);
     setIssues(detectedIssues);
+    
+    if (detectedIssues.length > 0) {
+      toast({
+        description: `${detectedIssues.length} potential issue${detectedIssues.length > 1 ? 's' : ''} detected with your orders`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleOrdersUpdated = (updatedOrders: DeliveryOrder[]) => {
@@ -36,6 +57,19 @@ const Index = () => {
     // Re-check for issues after orders are updated
     const detectedIssues = detectIssues(updatedOrders);
     setIssues(detectedIssues);
+  };
+
+  const handleTabChange = (value: string) => {
+    if (value !== 'upload' && orders.length === 0) {
+      toast({
+        title: "No orders available",
+        description: "Please upload a CSV file first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setActiveTab(value);
   };
 
   return (
@@ -59,7 +93,7 @@ const Index = () => {
       <main className="container py-6 md:py-10 flex-1">
         <Tabs 
           value={activeTab} 
-          onValueChange={setActiveTab}
+          onValueChange={handleTabChange}
           className="space-y-6"
         >
           <div className="backdrop-blur-sm sticky top-0 z-10 pb-4 pt-1 bg-background/95 supports-[backdrop-filter]:bg-background/60">

@@ -54,7 +54,7 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
 
   // Filter orders based on search term with null checks
   const filteredOrders = orders.filter(order => {
-    const searchLower = searchTerm.toLowerCase();
+    const searchLower = searchTerm?.toLowerCase() || '';
     return (
       (order.driver?.toLowerCase() || '').includes(searchLower) ||
       (order.pickup?.toLowerCase() || '').includes(searchLower) ||

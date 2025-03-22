@@ -12,18 +12,41 @@ export type DeliveryOrder = {
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
+  // Check for empty content
+  if (!content || content.trim() === '') {
+    return []; // Return empty array if no content
+  }
+  
   // Split by new lines and remove empty lines
-  const lines = content.split('\n').filter(line => line.trim() !== '');
+  const lines = content.split('\n').filter(line => line && line.trim() !== '');
   
   if (lines.length === 0) {
-    return []; // Return empty array if no content
+    return []; // Return empty array if no valid lines
   }
   
   // Extract headers from first line
   const headers = lines[0].split(',').map(h => h?.trim() || '');
   
+  if (headers.length === 0) {
+    return []; // Return empty array if no headers
+  }
+  
   // Parse each line into an object
   return lines.slice(1).map((line, index) => {
+    if (!line || line.trim() === '') {
+      // Skip empty lines
+      return {
+        id: `order-${index + 1}`,
+        driver: '',
+        pickup: '',
+        dropoff: '',
+        timeWindowStart: '',
+        timeWindowEnd: '',
+        items: '',
+        notes: ''
+      };
+    }
+    
     const values = parseCSVLine(line);
     
     // Create object with default values for all fields
@@ -47,8 +70,14 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       }
     });
     
+    // Add a random estimated distance if not provided
+    if (order.pickup && order.dropoff && !order.estimatedDistance) {
+      // Generate a random distance between 1 and 20 miles
+      order.estimatedDistance = Math.round((1 + Math.random() * 19) * 10) / 10;
+    }
+    
     return order;
-  });
+  }).filter(Boolean); // Filter out any undefined values
 };
 
 // Helper function to parse CSV line correctly handling quotes

@@ -33,6 +33,17 @@ export const generateInvoice = (
   ratePerMile: number = 1.5, 
   baseRate: number = 10
 ): Invoice => {
+  // Safety check
+  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+    return {
+      items: [],
+      totalDistance: 0,
+      totalCost: 0,
+      driverSummaries: [],
+      date: new Date().toISOString().split('T')[0]
+    };
+  }
+  
   const invoiceItems: InvoiceItem[] = orders.map(order => {
     const distance = order.estimatedDistance || 0;
     const baseCost = baseRate + (distance * ratePerMile);
@@ -41,15 +52,15 @@ export const generateInvoice = (
     const addOns = calculateAddOns(order);
     
     return {
-      orderId: order.id,
-      driver: order.driver,
-      pickup: order.pickup,
-      dropoff: order.dropoff,
+      orderId: order.id || 'unknown',
+      driver: order.driver || 'Unassigned',
+      pickup: order.pickup || 'N/A',
+      dropoff: order.dropoff || 'N/A',
       distance,
       baseCost: Number(baseCost.toFixed(2)),
       addOns,
       totalCost: Number((baseCost + addOns).toFixed(2)),
-      notes: order.notes
+      notes: order.notes || ''
     };
   });
   
@@ -57,16 +68,18 @@ export const generateInvoice = (
   const driverMap = new Map<string, DriverSummary>();
   
   invoiceItems.forEach(item => {
-    if (!driverMap.has(item.driver)) {
-      driverMap.set(item.driver, {
-        name: item.driver,
+    const driverName = item.driver || 'Unassigned';
+    
+    if (!driverMap.has(driverName)) {
+      driverMap.set(driverName, {
+        name: driverName,
         orderCount: 0,
         totalDistance: 0,
         totalEarnings: 0
       });
     }
     
-    const driverSummary = driverMap.get(item.driver)!;
+    const driverSummary = driverMap.get(driverName)!;
     driverSummary.orderCount += 1;
     driverSummary.totalDistance += item.distance;
     driverSummary.totalEarnings += item.totalCost;
@@ -139,26 +152,35 @@ export type Issue = {
 };
 
 export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
+  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+    return [];
+  }
+  
   const issues: Issue[] = [];
   const driversOrderCount = new Map<string, number>();
   
   // Count orders per driver
   orders.forEach(order => {
+    const driverName = order.driver || 'Unassigned';
     driversOrderCount.set(
-      order.driver, 
-      (driversOrderCount.get(order.driver) || 0) + 1
+      driverName, 
+      (driversOrderCount.get(driverName) || 0) + 1
     );
   });
   
   // Check each order for potential issues
   orders.forEach(order => {
+    // Get driver name with fallback
+    const driverName = order.driver || 'Unassigned';
+    const orderId = order.id || 'unknown';
+    
     // Issue: Driver overloaded with too many orders
-    const orderCount = driversOrderCount.get(order.driver) || 0;
+    const orderCount = driversOrderCount.get(driverName) || 0;
     if (orderCount > 10) {
       issues.push({
         severity: 'warning',
-        orderId: order.id,
-        driver: order.driver,
+        orderId,
+        driver: driverName,
         message: `Driver overloaded with ${orderCount} orders`,
         details: 'Consider redistributing orders across drivers'
       });
@@ -168,8 +190,8 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
     if (order.estimatedDistance && order.estimatedDistance > 15) {
       issues.push({
         severity: 'warning',
-        orderId: order.id,
-        driver: order.driver,
+        orderId,
+        driver: driverName,
         message: `Long distance (${order.estimatedDistance} miles)`,
         details: 'Long distances may require special handling'
       });
@@ -180,8 +202,8 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
     if (endTimeHour && endTimeHour >= 21) { // After 9pm
       issues.push({
         severity: 'warning',
-        orderId: order.id,
-        driver: order.driver,
+        orderId,
+        driver: driverName,
         message: 'Late delivery window',
         details: `End time ${order.timeWindowEnd} may be after pharmacy closing hours`
       });
@@ -191,8 +213,8 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
     if (!order.pickup || !order.dropoff) {
       issues.push({
         severity: 'error',
-        orderId: order.id,
-        driver: order.driver,
+        orderId,
+        driver: driverName,
         message: 'Missing address data',
         details: !order.pickup ? 'Pickup address missing' : 'Dropoff address missing'
       });

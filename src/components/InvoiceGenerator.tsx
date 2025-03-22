@@ -50,7 +50,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       toast({
         title: `${detectedIssues.length} issue${detectedIssues.length > 1 ? 's' : ''} detected`,
         description: "Check the Issues tab for details",
-        variant: "destructive",  // Changed from "warning" to "destructive"
+        variant: "destructive",
       });
     } else {
       toast({
@@ -61,7 +61,14 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   };
 
   const handleExportInvoice = () => {
-    if (!invoice) return;
+    if (!invoice) {
+      toast({
+        title: "No invoice to export",
+        description: "Please generate an invoice first",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
       // Prepare CSV content
@@ -124,7 +131,14 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   };
 
   const handlePrintInvoice = () => {
-    if (!invoiceRef.current) return;
+    if (!invoiceRef.current) {
+      toast({
+        title: "Nothing to print",
+        description: "Please generate an invoice first",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
       const printWindow = window.open('', '_blank');
@@ -190,6 +204,11 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       `);
       
       printWindow.document.close();
+      
+      toast({
+        title: "Print dialog opened",
+        description: "Your invoice is ready to print",
+      });
     } catch (error) {
       console.error('Error printing invoice:', error);
       toast({
