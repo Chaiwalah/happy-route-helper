@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -37,54 +37,95 @@ export function DataVerification({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldValue, setFieldValue] = useState<string>("");
   
+  // Update state when orders prop changes
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      setVerifiedOrders([...orders]);
+      
+      // Reset selection state when orders change
+      setSelectedOrderIndex(null);
+      setEditingField(null);
+      setFieldValue("");
+      
+      console.log("DataVerification: Orders updated, count:", orders.length);
+    }
+  }, [orders]);
+  
   // Filter orders with missing or potentially problematic data
   const ordersRequiringVerification = verifiedOrders.filter(order => 
-    order.missingFields.length > 0 || !order.tripNumber
+    order.missingFields.length > 0 || !order.tripNumber || order.tripNumber.trim() === ''
   );
   
   // Focus on Trip Number field issues specifically
   const ordersWithTripNumberIssues = verifiedOrders.filter(order => 
-    !order.tripNumber || order.missingFields.includes('tripNumber')
+    !order.tripNumber || order.tripNumber.trim() === '' || order.missingFields.includes('tripNumber')
   );
   
   const handleOrderEdit = (index: number) => {
     setSelectedOrderIndex(index);
     setEditingField(null);
+    console.log("Selected order for editing:", verifiedOrders[index].id);
   };
   
   const handleFieldEdit = (field: string, value: string) => {
     setEditingField(field);
     setFieldValue(value || "");
+    console.log(`Editing field: ${field}, current value: ${value || "(empty)"}`);
   };
   
   const handleFieldUpdate = () => {
     if (selectedOrderIndex === null || !editingField) return;
     
-    const updatedOrders = [...verifiedOrders];
-    const orderToUpdate = { ...updatedOrders[selectedOrderIndex] };
+    // Using immutable update pattern
+    const updatedOrders = verifiedOrders.map((order, index) => {
+      if (index === selectedOrderIndex) {
+        // Create a new object with the updated field
+        const updatedOrder = { ...order };
+        
+        // Typesafe way to update the dynamic property
+        (updatedOrder as any)[editingField] = fieldValue;
+        
+        // If we're updating a field that was missing, remove it from missingFields
+        if (updatedOrder.missingFields.includes(editingField)) {
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(f => f !== editingField);
+        }
+        
+        return updatedOrder;
+      }
+      return order;
+    });
     
-    // Update the field
-    (orderToUpdate as any)[editingField] = fieldValue;
-    
-    // If we're updating a field that was missing, remove it from missingFields
-    if (orderToUpdate.missingFields.includes(editingField)) {
-      orderToUpdate.missingFields = orderToUpdate.missingFields.filter(f => f !== editingField);
-    }
-    
-    updatedOrders[selectedOrderIndex] = orderToUpdate;
     setVerifiedOrders(updatedOrders);
     
     // Reset editing state
     setEditingField(null);
     setFieldValue("");
     
+    const updatedOrder = updatedOrders[selectedOrderIndex];
+    console.log(`Updated ${editingField} for order ${updatedOrder.id} to: ${fieldValue}`);
+    
     toast({
       title: "Field updated",
-      description: `${editingField} for order ${orderToUpdate.id} updated successfully.`,
+      description: `${editingField} for order ${updatedOrder.id} updated successfully.`,
     });
   };
   
   const handleVerificationComplete = () => {
+    // Check for any remaining issues with trip numbers
+    const stillMissingTripNumbers = verifiedOrders.filter(order => 
+      !order.tripNumber || order.tripNumber.trim() === ''
+    ).length;
+    
+    if (stillMissingTripNumbers > 0) {
+      const confirmComplete = window.confirm(
+        `There are still ${stillMissingTripNumbers} orders missing trip numbers. Do you want to continue anyway?`
+      );
+      
+      if (!confirmComplete) {
+        return;
+      }
+    }
+    
     onOrdersVerified(verifiedOrders);
     onOpenChange(false);
     
@@ -114,13 +155,15 @@ export function DataVerification({
                     <div 
                       key={order.id} 
                       className={`p-2 border rounded-md cursor-pointer transition-colors ${
-                        selectedOrderIndex === index ? 'bg-primary/10 border-primary' : 'hover:bg-muted'
+                        selectedOrderIndex === verifiedOrders.findIndex(o => o.id === order.id) 
+                          ? 'bg-primary/10 border-primary' 
+                          : 'hover:bg-muted'
                       }`}
                       onClick={() => handleOrderEdit(verifiedOrders.findIndex(o => o.id === order.id))}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{order.id}</span>
-                        {order.missingFields.includes('tripNumber') || !order.tripNumber ? (
+                        {order.missingFields.includes('tripNumber') || !order.tripNumber || order.tripNumber.trim() === '' ? (
                           <Badge variant="destructive" className="ml-2">
                             <AlertCircle className="h-3 w-3 mr-1" />
                             Missing Trip #
@@ -206,9 +249,11 @@ export function DataVerification({
                       </div>
                     ) : (
                       <div className={`p-2 bg-muted/20 rounded text-sm ${
-                        !verifiedOrders[selectedOrderIndex].tripNumber ? 'text-red-500 italic' : ''
+                        !verifiedOrders[selectedOrderIndex].tripNumber || verifiedOrders[selectedOrderIndex].tripNumber.trim() === '' 
+                          ? 'text-red-500 italic' 
+                          : ''
                       }`}>
-                        {verifiedOrders[selectedOrderIndex].tripNumber || 'Not specified'}
+                        {verifiedOrders[selectedOrderIndex].tripNumber?.trim() || 'Not specified'}
                       </div>
                     )}
                   </div>

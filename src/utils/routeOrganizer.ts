@@ -16,38 +16,31 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       ? new Date(order.exReadyTime).toISOString().split('T')[0] 
       : 'unknown-date';
     
-    // If TripNumber exists, use it for route grouping - this is the primary grouping method
-    if (order.tripNumber) {
+    // If TripNumber exists and is not empty, use it for route grouping
+    if (order.tripNumber && order.tripNumber.trim() !== '') {
       // Clean the trip number - trim spaces and handle any formatting issues
       const cleanTripNumber = order.tripNumber.trim();
-      if (cleanTripNumber === '') {
-        tripNumberIssues.push(`Order ${order.id} has an empty Trip Number after trimming spaces`);
-        
-        // Fallback to individual route
-        const routeKey = `${driver}-${dateStr}-order-${order.id}`;
-        if (!routeMap.has(routeKey)) {
-          routeMap.set(routeKey, []);
-        }
-        routeMap.get(routeKey)!.push(order);
-      } else {
-        const routeKey = `${driver}-${dateStr}-trip-${cleanTripNumber}`;
-        
-        if (!routeMap.has(routeKey)) {
-          routeMap.set(routeKey, []);
-        }
-        
-        routeMap.get(routeKey)!.push(order);
+      const routeKey = `${driver}-${dateStr}-trip-${cleanTripNumber}`;
+      
+      if (!routeMap.has(routeKey)) {
+        routeMap.set(routeKey, []);
       }
+      
+      routeMap.get(routeKey)!.push(order);
     } 
-    // Fallback to treating as individual route if no TripNumber
+    // Handle missing or empty trip numbers with fallback grouping
     else {
-      tripNumberIssues.push(`Order ${order.id} is missing Trip Number`);
+      const reason = order.tripNumber === undefined 
+        ? 'missing Trip Number' 
+        : 'empty Trip Number';
+      
+      tripNumberIssues.push(`Order ${order.id} has ${reason}`);
       
       // Check if we have a valid timestamp to potentially group by time window
       if (order.exReadyTime) {
         const readyTime = new Date(order.exReadyTime);
         if (!isNaN(readyTime.getTime())) {
-          // Since there's no Trip Number, treat as an individual order
+          // Since there's no valid Trip Number, treat as an individual order
           const routeKey = `${driver}-${dateStr}-order-${order.id}`;
           routeMap.set(routeKey, [order]);
         } else {

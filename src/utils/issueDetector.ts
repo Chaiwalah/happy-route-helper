@@ -72,8 +72,8 @@ export const detectIssues = (
       });
     }
     
-    // Specifically check for trip number issues
-    if (!order.tripNumber && !order.missingFields.includes('tripNumber')) {
+    // Specifically check for empty trip number (not just null but also empty string)
+    if ((!order.tripNumber || order.tripNumber.trim() === '') && !order.missingFields.includes('tripNumber')) {
       issues.push({
         orderId: order.id,
         driver,
@@ -126,11 +126,13 @@ export const detectIssues = (
   // Group orders by Trip Number to check for potential routing issues
   const tripOrderCounts: Record<string, DeliveryOrder[]> = {};
   orders.forEach(order => {
-    if (order.tripNumber) {
-      if (!tripOrderCounts[order.tripNumber]) {
-        tripOrderCounts[order.tripNumber] = [];
+    // Only count valid trip numbers
+    if (order.tripNumber && order.tripNumber.trim() !== '') {
+      const tripNumber = order.tripNumber.trim();
+      if (!tripOrderCounts[tripNumber]) {
+        tripOrderCounts[tripNumber] = [];
       }
-      tripOrderCounts[order.tripNumber].push(order);
+      tripOrderCounts[tripNumber].push(order);
     }
   });
   
@@ -151,11 +153,13 @@ export const detectIssues = (
   // Identify conflicting trip numbers (same trip number but different drivers)
   const tripDrivers: Record<string, Set<string>> = {};
   orders.forEach(order => {
-    if (order.tripNumber) {
-      if (!tripDrivers[order.tripNumber]) {
-        tripDrivers[order.tripNumber] = new Set();
+    // Only process valid trip numbers
+    if (order.tripNumber && order.tripNumber.trim() !== '') {
+      const tripNumber = order.tripNumber.trim();
+      if (!tripDrivers[tripNumber]) {
+        tripDrivers[tripNumber] = new Set();
       }
-      tripDrivers[order.tripNumber].add(order.driver || 'Unassigned');
+      tripDrivers[tripNumber].add(order.driver || 'Unassigned');
     }
   });
   
