@@ -108,6 +108,8 @@ const calculateAddOns = (order: DeliveryOrder): number => {
 
 // Helper to extract hour from time string
 const extractHour = (timeString: string): number | null => {
+  if (!timeString) return null;
+  
   // Try to match various time formats
   const timeRegex = /(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm))?/i;
   const match = timeString.match(timeRegex);

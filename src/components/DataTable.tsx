@@ -52,14 +52,14 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
     ));
   };
 
-  // Filter orders based on search term
+  // Filter orders based on search term with null checks
   const filteredOrders = orders.filter(order => {
     const searchLower = searchTerm.toLowerCase();
     return (
-      order.driver.toLowerCase().includes(searchLower) ||
-      order.pickup.toLowerCase().includes(searchLower) ||
-      order.dropoff.toLowerCase().includes(searchLower) ||
-      order.id.toLowerCase().includes(searchLower)
+      (order.driver?.toLowerCase() || '').includes(searchLower) ||
+      (order.pickup?.toLowerCase() || '').includes(searchLower) ||
+      (order.dropoff?.toLowerCase() || '').includes(searchLower) ||
+      (order.id?.toLowerCase() || '').includes(searchLower)
     );
   });
 
@@ -104,52 +104,52 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
                     key={order.id}
                     className={`stagger-item ${index % 2 === 0 ? 'bg-white/50 dark:bg-gray-950/20' : 'bg-gray-50/50 dark:bg-gray-900/10'} transition-all`}
                   >
-                    <TableCell className="font-mono text-xs">{order.id}</TableCell>
+                    <TableCell className="font-mono text-xs">{order.id || ''}</TableCell>
                     <TableCell>
                       {editingId === order.id ? (
                         <Input 
-                          value={order.driver}
+                          value={order.driver || ''}
                           onChange={(e) => handleChange(order.id, 'driver', e.target.value)}
                           className="w-full"
                         />
                       ) : (
-                        order.driver
+                        order.driver || ''
                       )}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {editingId === order.id ? (
                         <Input 
-                          value={order.pickup}
+                          value={order.pickup || ''}
                           onChange={(e) => handleChange(order.id, 'pickup', e.target.value)}
                           className="w-full"
                         />
                       ) : (
-                        order.pickup
+                        order.pickup || ''
                       )}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {editingId === order.id ? (
                         <Input 
-                          value={order.dropoff}
+                          value={order.dropoff || ''}
                           onChange={(e) => handleChange(order.id, 'dropoff', e.target.value)}
                           className="w-full"
                         />
                       ) : (
-                        order.dropoff
+                        order.dropoff || ''
                       )}
                     </TableCell>
                     <TableCell>
                       {editingId === order.id ? (
                         <div className="flex space-x-2">
                           <Input 
-                            value={order.timeWindowStart}
+                            value={order.timeWindowStart || ''}
                             onChange={(e) => handleChange(order.id, 'timeWindowStart', e.target.value)}
                             className="w-20 text-xs"
                             placeholder="Start"
                           />
                           <span className="text-gray-500">-</span>
                           <Input 
-                            value={order.timeWindowEnd}
+                            value={order.timeWindowEnd || ''}
                             onChange={(e) => handleChange(order.id, 'timeWindowEnd', e.target.value)}
                             className="w-20 text-xs"
                             placeholder="End"
@@ -157,7 +157,7 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
                         </div>
                       ) : (
                         <span>
-                          {order.timeWindowStart} - {order.timeWindowEnd}
+                          {order.timeWindowStart || 'N/A'} - {order.timeWindowEnd || 'N/A'}
                         </span>
                       )}
                     </TableCell>
