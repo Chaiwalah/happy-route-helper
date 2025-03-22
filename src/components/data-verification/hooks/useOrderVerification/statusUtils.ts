@@ -1,42 +1,25 @@
-
 import { DeliveryOrder } from '@/utils/csvParser';
 import { FieldValidationStatus } from './types';
-import { isEmptyValue, isUnassignedDriver } from './validationUtils';
+import { isEmptyValue, isUnassignedDriver, normalizeFieldValue } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
 /**
- * Process a value that might be an object representation
+ * Process a value that might be an object representation - now uses normalizeFieldValue
  */
-export const processFieldValue = (value: any): string => {
-  if (value === undefined || value === null) return '';
-  
-  if (typeof value === 'object' && value !== null) {
-    // Handle object with _type property set to "undefined"
-    if (value._type === 'undefined') return '';
-    
-    // Handle object with value property
-    if ('value' in value) {
-      const objValue = value.value;
-      return objValue === undefined || objValue === null ? '' : String(objValue);
-    }
-  }
-  
-  // Handle primitive values by converting to string
-  return String(value);
-};
+export const processFieldValue = normalizeFieldValue;
 
 /**
  * Get validation status for an order
  */
 export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warning' | 'error' => {
   // Check for trip number issues - most critical
-  const tripNumberValue = processFieldValue(order.tripNumber);
+  const tripNumberValue = normalizeFieldValue(order.tripNumber);
   if (isEmptyValue(order.tripNumber) || isNoiseOrTestTripNumber(tripNumberValue)) {
     return 'error';
   }
   
   // Check for driver issues
-  const driverValue = processFieldValue(order.driver);
+  const driverValue = normalizeFieldValue(order.driver);
   if (isEmptyValue(order.driver) || isUnassignedDriver(driverValue)) {
     return 'warning';
   }
@@ -60,7 +43,7 @@ export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warni
  */
 export const getFieldValidationStatus = (fieldName: string, value: string): FieldValidationStatus => {
   // Process the value to handle object representations
-  const processedValue = processFieldValue(value);
+  const processedValue = normalizeFieldValue(value);
   
   if (isEmptyValue(processedValue)) {
     // Critical fields

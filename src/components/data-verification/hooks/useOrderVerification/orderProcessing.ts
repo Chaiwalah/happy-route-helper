@@ -1,11 +1,11 @@
+
 import { DeliveryOrder } from '@/utils/csvParser';
-import { isEmptyValue, isUnassignedDriver } from './validationUtils';
+import { isEmptyValue, isUnassignedDriver, normalizeFieldValue } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { logDebug } from './logUtils';
-import { processFieldValue } from './statusUtils';
 
 /**
- * Process orders and identify issues
+ * Process orders and identify issues with a unified approach
  */
 export const processOrdersForVerification = (
   orders: DeliveryOrder[]
@@ -27,141 +27,38 @@ export const processOrdersForVerification = (
   const processedOrders = JSON.parse(JSON.stringify(orders)) as DeliveryOrder[];
   
   // Enhanced processing to identify orders with issues
-  const ordersWithTripNumberIssues = processedOrders.filter(order => {
+  const ordersWithIssues = processedOrders.map(order => {
     // Ensure missingFields exists and is an array
     if (!order.missingFields) {
       order.missingFields = [];
     }
     
-    // First, ensure we handle trip number validation correctly
-    // Safely access properties with null checking
-    const rawTripNumber = order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber;
-    const tripNumberAsString = processFieldValue(rawTripNumber);
+    // Process and validate trip number
+    processTripNumber(order);
     
-    const hasTripNumber = !isEmptyValue(rawTripNumber);
-    const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(tripNumberAsString);
+    // Process and validate driver
+    processDriver(order);
     
-    // Log raw trip number for debugging
-    logDebug(`Raw trip number for ${order.id}:`, {
-      value: rawTripNumber,
-      type: typeof rawTripNumber,
-      asString: tripNumberAsString
-    });
-    
-    // Log trip number validation for all orders
-    logDebug(`Trip Number Validation for ${order.id}:`, {
-      rawValue: rawTripNumber,
-      hasTripNumber,
-      isTripNumberNoise,
-      isEmptyValue: isEmptyValue(rawTripNumber),
-      tripNumberAsString
-    });
-    
-    // Normalize the trip number value - handle all possible types
-    if (rawTripNumber === null || rawTripNumber === undefined || isEmptyValue(rawTripNumber)) {
-      // Handle null, undefined, or empty values
-      order.tripNumber = '';
-    } else if (typeof rawTripNumber === 'object') {
-      // Handle object representation, safely extract value
-      const objValue = (rawTripNumber as any)?.value;
-      order.tripNumber = objValue === undefined || objValue === null || objValue === 'undefined' 
-        ? '' 
-        : String(objValue);
-    } else {
-      // Ensure string representation for other types
-      order.tripNumber = String(rawTripNumber);
-    }
-    
-    // Final normalization - empty strings for truly empty values
-    if (order.tripNumber === 'undefined' || order.tripNumber === 'null') {
-      order.tripNumber = '';
-    }
-    
-    if (hasTripNumber && !isTripNumberNoise) {
-      // Trip number exists and is valid - remove from missing fields if present
-      if (order.missingFields.includes('tripNumber')) {
-        order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
-        logDebug(`Fixed false positive: Order ${order.id} has valid Trip Number "${order.tripNumber}" but was incorrectly marked as missing`);
-      }
-    } else {
-      // Trip number is missing or noise - add to missing fields if not already there
-      if (!order.missingFields.includes('tripNumber')) {
-        order.missingFields.push('tripNumber');
-        logDebug(`Added missing field flag: Order ${order.id} has ${hasTripNumber ? 'noise' : 'missing'} Trip Number "${order.tripNumber || ''}"`);
-      }
-    }
-    
-    // Similar enhanced check for driver - handle all possible types safely
-    const rawDriver = order.driver === undefined || order.driver === null ? '' : order.driver;
-    const driverAsString = processFieldValue(rawDriver);
-    
-    const hasValidDriver = !isEmptyValue(rawDriver) && !isUnassignedDriver(driverAsString);
-    
-    // Log driver validation for all orders
-    logDebug(`Driver Validation for ${order.id}:`, {
-      rawValue: rawDriver,
-      hasValidDriver,
-      isEmptyValue: isEmptyValue(rawDriver),
-      isUnassigned: isUnassignedDriver(driverAsString),
-      driverAsString
-    });
-    
-    // Normalize the driver value - handle all possible types
-    if (rawDriver === null || rawDriver === undefined || isEmptyValue(rawDriver)) {
-      // Handle null, undefined, or empty values
-      order.driver = 'Unassigned';
-    } else if (typeof rawDriver === 'object') {
-      // Handle object representation, safely extract value
-      const objValue = (rawDriver as any)?.value;
-      const valueAsString = objValue === undefined || objValue === null || objValue === 'undefined' 
-        ? '' 
-        : String(objValue);
-      
-      // Only set to 'Unassigned' if value is truly empty
-      order.driver = valueAsString === '' ? 'Unassigned' : valueAsString;
-    } else {
-      // Non-empty string or other primitive - keep as is or convert to string
-      const driverStr = String(rawDriver);
-      order.driver = driverStr === '' ? 'Unassigned' : driverStr;
-    }
-    
-    // Final normalization - ensure 'Unassigned' for truly empty values
-    if (order.driver === 'undefined' || order.driver === 'null' || order.driver === '') {
-      order.driver = 'Unassigned';
-    }
-    
-    if (hasValidDriver) {
-      // Remove from missing fields if present
-      if (order.missingFields.includes('driver')) {
-        order.missingFields = order.missingFields.filter(field => field !== 'driver');
-        logDebug(`Fixed false positive: Order ${order.id} has valid Driver "${order.driver}" but was incorrectly marked as missing`);
-      }
-    } else {
-      // Add to missing fields if not already there
-      if (!order.missingFields.includes('driver')) {
-        order.missingFields.push('driver');
-        logDebug(`Added missing field flag: Order ${order.id} has missing or invalid Driver "${order.driver || ''}"`);
-      }
-    }
-    
+    return order;
+  }).filter(order => {
     // Return true if order has issues with trip number or driver
-    return !hasTripNumber || isTripNumberNoise || !hasValidDriver;
+    return order.missingFields.includes('tripNumber') || order.missingFields.includes('driver');
   });
   
   // Find all unique trip numbers for suggestions (excluding noise values)
   const allTripNumbers = processedOrders
-    .map(o => o.tripNumber ?? '')
-    .filter((value): value is string => 
-      typeof value === 'string' && 
+    .map(o => normalizeFieldValue(o.tripNumber))
+    .filter(value => 
+      value && 
       value.trim() !== '' && 
       !isNoiseOrTestTripNumber(value)
     );
   
   // Find all unique drivers for suggestions
   const allDrivers = processedOrders
-    .map(o => o.driver ?? '')
-    .filter((value): value is string => 
-      typeof value === 'string' && 
+    .map(o => normalizeFieldValue(o.driver))
+    .filter(value => 
+      value && 
       value.trim() !== '' && 
       value !== 'Unassigned'
     );
@@ -170,12 +67,87 @@ export const processOrdersForVerification = (
   const suggestedTripNumbers = [...new Set(allTripNumbers)].sort();
   const suggestedDrivers = [...new Set(allDrivers)].sort();
   
-  logDebug(`Orders updated, count: ${processedOrders.length}, issues: ${ordersWithTripNumberIssues.length}`);
-  logDebug(`Orders with issues: ${ordersWithTripNumberIssues.map(o => o.id).join(', ')}`);
+  logDebug(`Orders processed: total=${processedOrders.length}, with issues=${ordersWithIssues.length}`);
   
   return {
-    ordersWithIssues: ordersWithTripNumberIssues,
+    ordersWithIssues,
     suggestedTripNumbers,
     suggestedDrivers
   };
 };
+
+/**
+ * Process and normalize trip number for an order
+ */
+function processTripNumber(order: DeliveryOrder): void {
+  // Normalize the trip number for consistent handling
+  const rawTripNumber = order.tripNumber;
+  const normalizedTripNumber = normalizeFieldValue(rawTripNumber);
+  
+  // Log raw and normalized trip number for debugging
+  logDebug(`Trip number for ${order.id}:`, {
+    rawValue: rawTripNumber,
+    rawType: typeof rawTripNumber,
+    normalized: normalizedTripNumber
+  });
+  
+  // Check if the trip number is valid
+  const isTripNumberEmpty = isEmptyValue(rawTripNumber);
+  const isTripNumberNoise = !isTripNumberEmpty && isNoiseOrTestTripNumber(normalizedTripNumber);
+  
+  // Store the normalized value
+  order.tripNumber = normalizedTripNumber;
+  
+  // Update missing fields based on validation
+  if (isTripNumberEmpty || isTripNumberNoise) {
+    // Trip number is missing or noise - add to missing fields if not already there
+    if (!order.missingFields.includes('tripNumber')) {
+      order.missingFields.push('tripNumber');
+      logDebug(`Added missing field flag: Order ${order.id} has ${isTripNumberEmpty ? 'missing' : 'noise'} Trip Number "${normalizedTripNumber || ''}"`);
+    }
+  } else {
+    // Trip number exists and is valid - remove from missing fields if present
+    if (order.missingFields.includes('tripNumber')) {
+      order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
+      logDebug(`Removed trip number from missing fields for ${order.id}`);
+    }
+  }
+}
+
+/**
+ * Process and normalize driver for an order
+ */
+function processDriver(order: DeliveryOrder): void {
+  // Normalize the driver for consistent handling
+  const rawDriver = order.driver;
+  const normalizedDriver = normalizeFieldValue(rawDriver);
+  
+  // Log raw and normalized driver for debugging
+  logDebug(`Driver for ${order.id}:`, {
+    rawValue: rawDriver,
+    rawType: typeof rawDriver,
+    normalized: normalizedDriver
+  });
+  
+  // Check if the driver is valid
+  const isDriverEmpty = isEmptyValue(rawDriver);
+  const isDriverUnassigned = !isDriverEmpty && normalizedDriver.toLowerCase() === 'unassigned';
+  
+  // Store the normalized value, with special handling for empty values
+  order.driver = isDriverEmpty ? 'Unassigned' : normalizedDriver;
+  
+  // Update missing fields based on validation
+  if (isDriverEmpty || isDriverUnassigned) {
+    // Driver is missing or unassigned - add to missing fields if not already there
+    if (!order.missingFields.includes('driver')) {
+      order.missingFields.push('driver');
+      logDebug(`Added missing field flag: Order ${order.id} has ${isDriverEmpty ? 'missing' : 'unassigned'} Driver "${order.driver || ''}"`);
+    }
+  } else {
+    // Driver exists and is valid - remove from missing fields if present
+    if (order.missingFields.includes('driver')) {
+      order.missingFields = order.missingFields.filter(field => field !== 'driver');
+      logDebug(`Removed driver from missing fields for ${order.id}`);
+    }
+  }
+}

@@ -20,27 +20,30 @@ export type DeliveryOrder = {
   isPumpPickup?: boolean;        // Flag to identify pump pickup orders
 };
 
+/**
+ * Enhanced CSV parser with robust trip number and driver handling
+ */
 export const parseCSV = (content: string): DeliveryOrder[] => {
-  // Check for empty content
+  // Basic validation of content
   if (!content || content.trim() === '') {
-    return []; // Return empty array if no content
+    return [];
   }
   
   // Split by new lines and remove empty lines
   const lines = content.split('\n').filter(line => line && line.trim() !== '');
   
   if (lines.length === 0) {
-    return []; // Return empty array if no valid lines
+    return [];
   }
   
   // Extract headers from first line
   const headers = lines[0].split(',').map(h => h?.trim() || '');
   
   if (headers.length === 0) {
-    return []; // Return empty array if no headers
+    return []; 
   }
   
-  // Check which columns exist in the CSV
+  // Check which columns exist in the CSV with comprehensive matching
   const columnsExist = {
     items: headers.some(header => 
       ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
@@ -85,11 +88,10 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
   
   console.log('Found trip number headers:', tripNumberHeaders);
   
-  // Parse each line into an object
+  // Parse each line into an object with enhanced validation
   const validOrders = lines.slice(1)
     .map((line, index) => {
       if (!line || line.trim() === '') {
-        // Skip empty lines
         return null;
       }
       
@@ -126,7 +128,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       
       // Check if any key field has a value
       const hasKeyData = keyFields.some(field => {
-        // Look for the field in case-insensitive way
         const matchingKey = Object.keys(rawRow).find(
           key => key.toLowerCase() === field.toLowerCase()
         );
@@ -141,6 +142,13 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // Initialize missing fields array
       const missingFields: string[] = [];
       
+      // Create object with default values for all fields
+      const order: DeliveryOrder = {
+        id: `order-${index + 1}`,
+        missingAddress: false,
+        missingFields: [],
+      };
+      
       // Handle address concatenation for delivery address
       const addressLine = rawRow["Delivery Address 1"] || rawRow["delivery address 1"] || "";
       const city = rawRow["Delivery City"] || rawRow["delivery city"] || "";
@@ -150,13 +158,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       const fullAddress = [addressLine, city, state, zip]
         .filter(Boolean)
         .join(", ");
-      
-      // Create object with default values for all fields
-      const order: DeliveryOrder = {
-        id: `order-${index + 1}`, // Add a default ID (will be re-numbered later)
-        missingAddress: false, // Default to false, will set to true if address is missing
-        missingFields: [], // Initialize empty array
-      };
       
       // If we have a full address, set the dropoff to the full address
       if (fullAddress.trim() !== "") {
@@ -266,55 +267,33 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         missingFields.push('notes');
       }
       
-      // Fix for driver assignment issue - preserve driver value when present
-      const driver = 
-        rawRow["Driver"] || 
-        rawRow["Driver Name"] || 
-        rawRow["Courier"] || 
-        rawRow["driver"] || 
-        "";
-        
-      if (driver) {
-        order.driver = driver;
-      } else if (columnsExist.driver) {
-        // Only set as 'Unassigned' if the driver column exists but is empty
-        order.driver = 'Unassigned';
-        // Add 'driver' to missingFields to track that it's missing
-        missingFields.push('driver');
-      }
+      // Enhanced Trip Number extraction with unified approach
+      const tripNumberValue = extractTripNumber(rawRow, index);
       
-      // Enhanced Trip Number extraction - check each possible column name variation
-      // Add more variations if needed based on actual CSV structure
-      const tripNumberVariations = [
-        "Trip Number", "Trip #", "TripNumber", "Trip", 
-        "Route Number", "Route #", "Route", 
-        "trip number", "trip #", "tripnumber", "trip",
-        "route number", "route #", "route", 
-        "Trip", "TRIP", "Route", "ROUTE",
-        // Add any other variations that might exist in your CSV
-      ];
-      
-      let foundTripNumber = '';
-      
-      // Check each variation of the trip number field
-      for (const tripVar of tripNumberVariations) {
-        if (rawRow[tripVar] && rawRow[tripVar].trim() !== '') {
-          foundTripNumber = rawRow[tripVar].trim();
-          break; // Stop once we find a non-empty value
-        }
-      }
-      
-      if (foundTripNumber) {
-        order.tripNumber = foundTripNumber;
-        // If this is one of our test orders, log additional details
+      if (tripNumberValue) {
+        order.tripNumber = tripNumberValue;
+        // Log for debugging specific orders
         if ([16, 21, 22, 23].includes(index)) {
-          console.log(`Order ${index + 1} (order-${index + 1}): Found Trip Number "${foundTripNumber}" from column`);
+          console.log(`Order ${index + 1} (order-${index + 1}): Found Trip Number "${tripNumberValue}" from column`);
         }
       } else if (columnsExist.tripNumber) {
+        // Only add to missingFields if the column exists but no value was found
+        // Leave order.tripNumber as undefined to be handled by normalization later
         missingFields.push('tripNumber');
         if ([16, 21, 22, 23].includes(index)) {
           console.log(`Order ${index + 1} (order-${index + 1}): No Trip Number found despite column existing`);
         }
+      }
+      
+      // Enhanced Driver extraction with unified approach
+      const driverValue = extractDriverName(rawRow);
+      
+      if (driverValue) {
+        order.driver = driverValue;
+      } else if (columnsExist.driver) {
+        // Only set as undefined (not 'Unassigned') if driver column exists but is empty
+        // This allows downstream normalization to handle it consistently
+        missingFields.push('driver');
       }
       
       // Set the missing fields in the order
@@ -368,6 +347,62 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     id: `order-${index + 1}`
   }));
 };
+
+/**
+ * Extract trip number from raw row data with comprehensive matching
+ */
+function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): string | null {
+  // All possible trip number field variations
+  const tripNumberVariations = [
+    "Trip Number", "Trip #", "TripNumber", "Trip", 
+    "Route Number", "Route #", "Route", 
+    "trip number", "trip #", "tripnumber", "trip",
+    "route number", "route #", "route", 
+    "Trip", "TRIP", "Route", "ROUTE",
+  ];
+  
+  // Try each variation until we find a non-empty value
+  for (const fieldName of tripNumberVariations) {
+    const value = rawRow[fieldName];
+    if (value && value.trim() !== '') {
+      // Log for specific test orders
+      if ([16, 21, 22, 23].includes(rowIndex)) {
+        console.log(`Found trip number in "${fieldName}" column for order-${rowIndex+1}: "${value}"`);
+      }
+      return value.trim();
+    }
+  }
+  
+  // Log for specific test orders if no trip number found
+  if ([16, 21, 22, 23].includes(rowIndex)) {
+    console.log(`No trip number found in any column for order-${rowIndex+1}`);
+  }
+  
+  return null;
+}
+
+/**
+ * Extract driver name from raw row data with comprehensive matching
+ */
+function extractDriverName(rawRow: Record<string, string>): string | null {
+  // All possible driver field variations
+  const driverVariations = [
+    "Driver", "Driver Name", "Courier", 
+    "driver", "driver name", "courier",
+    "DRIVER", "DRIVER NAME", "COURIER"
+  ];
+  
+  // Try each variation until we find a non-empty value
+  for (const fieldName of driverVariations) {
+    const value = rawRow[fieldName];
+    if (value && value.trim() !== '') {
+      // Don't normalize to "Unassigned" here - let validation handle that
+      return value.trim();
+    }
+  }
+  
+  return null;
+}
 
 // Helper function to parse CSV line correctly handling quotes
 const parseCSVLine = (line: string): string[] => {

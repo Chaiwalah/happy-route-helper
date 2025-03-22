@@ -8,7 +8,7 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FieldValidationStatus } from './hooks/useOrderVerification';
-import { processFieldValue } from './hooks/useOrderVerification/statusUtils';
+import { normalizeFieldValue, isEmptyValue } from './hooks/useOrderVerification/validationUtils';
 
 interface OrderDetailsProps {
   selectedOrder: DeliveryOrder | null;
@@ -62,33 +62,39 @@ export function OrderDetails({
     );
   }
 
-  // Enhanced check for trip number validity with proper value processing
-  const processedTripNumber = processFieldValue(selectedOrder.tripNumber);
-  const isTripNumberNoise = processedTripNumber ? 
-    isNoiseOrTestTripNumber(processedTripNumber) : false;
-    
-  const isTripNumberNA = processedTripNumber ? 
-    (processedTripNumber.trim().toLowerCase() === 'n/a' || 
-     processedTripNumber.trim().toLowerCase() === 'na' || 
-     processedTripNumber.trim().toLowerCase() === 'none') : false;
+  // Get normalized values using our unified normalization function
+  const tripNumberValue = normalizeFieldValue(selectedOrder.tripNumber);
+  const driverValue = normalizeFieldValue(selectedOrder.driver);
+  const pickupValue = normalizeFieldValue(selectedOrder.pickup);
+  const dropoffValue = normalizeFieldValue(selectedOrder.dropoff);
+  const readyTimeValue = normalizeFieldValue(selectedOrder.exReadyTime);
+  const deliveryTimeValue = normalizeFieldValue(selectedOrder.exDeliveryTime);
+  
+  // Validation checks using our unified validation approach
+  const isTripNumberEmpty = isEmptyValue(tripNumberValue);
+  const isTripNumberNoise = !isTripNumberEmpty && isNoiseOrTestTripNumber(tripNumberValue);
+  const isTripNumberNA = !isTripNumberEmpty && ['n/a', 'na', 'none'].includes(tripNumberValue.toLowerCase());
   
   // Safe access to missingFields with default empty array
   const missingFields = selectedOrder.missingFields || [];
-    
-  // Get safe string values for display, ensuring they're never undefined
-  const tripNumberValue = processFieldValue(selectedOrder.tripNumber);
-  const driverValue = processFieldValue(selectedOrder.driver);
-  const pickupValue = processFieldValue(selectedOrder.pickup);
-  const dropoffValue = processFieldValue(selectedOrder.dropoff);
-  const readyTimeValue = processFieldValue(selectedOrder.exReadyTime);
-  const deliveryTimeValue = processFieldValue(selectedOrder.exDeliveryTime);
   
-  // Enhanced debug information
+  // Enhanced debug information with structured data
   console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
-    tripNumber: tripNumberValue || 'EMPTY',
-    tripNumberIsNA: isTripNumberNA,
-    tripNumberIsNoise: isTripNumberNoise,
-    driver: driverValue || 'EMPTY',
+    tripNumber: {
+      value: tripNumberValue || 'EMPTY',
+      raw: selectedOrder.tripNumber,
+      isEmpty: isTripNumberEmpty,
+      isNoise: isTripNumberNoise,
+      isNA: isTripNumberNA,
+      isMissing: missingFields.includes('tripNumber')
+    },
+    driver: {
+      value: driverValue || 'EMPTY',
+      raw: selectedOrder.driver,
+      isEmpty: isEmptyValue(driverValue),
+      isUnassigned: driverValue.toLowerCase() === 'unassigned',
+      isMissing: missingFields.includes('driver')
+    },
     editingField: editingField || 'NONE',
     fieldValue: fieldValue || 'EMPTY',
     missingFields: missingFields
@@ -117,8 +123,7 @@ export function OrderDetails({
                   fieldName="tripNumber"
                   value={editingField === 'tripNumber' ? fieldValue : tripNumberValue}
                   isEditing={editingField === 'tripNumber'}
-                  isError={!tripNumberValue || 
-                           tripNumberValue.trim() === '' || 
+                  isError={isTripNumberEmpty || 
                            isTripNumberNA ||
                            missingFields.includes('tripNumber')}
                   isNoise={isTripNumberNoise}
@@ -149,8 +154,7 @@ export function OrderDetails({
                   fieldName="driver"
                   value={editingField === 'driver' ? fieldValue : driverValue}
                   isEditing={editingField === 'driver'}
-                  isError={!driverValue || 
-                           driverValue.trim() === '' || 
+                  isError={isEmptyValue(driverValue) || 
                            driverValue.toLowerCase() === 'unassigned' ||
                            missingFields.includes('driver')}
                   isSaving={isSavingField}
@@ -181,7 +185,7 @@ export function OrderDetails({
                     fieldName="pickup"
                     value={editingField === 'pickup' ? fieldValue : pickupValue}
                     isEditing={editingField === 'pickup'}
-                    isError={!pickupValue}
+                    isError={isEmptyValue(pickupValue)}
                     isSaving={isSavingField}
                     validationStatus={getFieldValidationStatus('pickup', editingField === 'pickup' ? fieldValue : pickupValue)}
                     validationMessage="Enter a complete pickup address"
@@ -206,7 +210,7 @@ export function OrderDetails({
                     fieldName="dropoff"
                     value={editingField === 'dropoff' ? fieldValue : dropoffValue}
                     isEditing={editingField === 'dropoff'}
-                    isError={!dropoffValue}
+                    isError={isEmptyValue(dropoffValue)}
                     isSaving={isSavingField}
                     validationStatus={getFieldValidationStatus('dropoff', editingField === 'dropoff' ? fieldValue : dropoffValue)}
                     validationMessage="Enter a complete delivery address"

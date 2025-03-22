@@ -1,69 +1,76 @@
 
+/**
+ * Enhanced utilities for validating and normalizing field values
+ */
+
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
 /**
- * Enhanced utility to check if a value is effectively empty
+ * Normalize any field value to a consistent string representation
+ * Handles all possible input types including object representations
  */
-export const isEmptyValue = (value: any): boolean => {
-  // Check for undefined or null
-  if (value === undefined || value === null) return true;
+export const normalizeFieldValue = (value: any): string => {
+  // Handle undefined or null
+  if (value === undefined || value === null) return '';
   
-  // Check for objects with _type property set to "undefined"
+  // Handle object with _type property (special case from some parsers)
   if (typeof value === 'object' && value !== null) {
-    // Check for object representation of undefined
-    if (value._type === 'undefined') return true;
+    // First handle the {_type: "undefined"} case
+    if (value._type === 'undefined') return '';
     
-    // Check for object with empty or undefined value property
+    // Handle object with value property (common representation)
     if ('value' in value) {
       const objValue = value.value;
-      if (objValue === undefined || 
-          objValue === null || 
-          objValue === 'undefined' || 
-          (typeof objValue === 'string' && objValue.trim() === '')) {
-        return true;
-      }
+      return objValue === undefined || objValue === null ? '' : String(objValue);
     }
     
-    // Check for empty object
-    if (Object.keys(value).length === 0) return true;
+    // Handle empty object
+    if (Object.keys(value).length === 0) return '';
+    
+    // Try to stringify other objects (last resort)
+    try {
+      return String(value);
+    } catch {
+      return '';
+    }
   }
   
-  // If it's a string, check if it's empty or special "empty" values
-  if (typeof value === 'string') {
-    const trimmedValue = value.trim().toLowerCase();
-    return trimmedValue === '' || 
-           trimmedValue === 'n/a' || 
-           trimmedValue === 'na' || 
-           trimmedValue === 'none' || 
-           trimmedValue === 'null' ||
-           trimmedValue === 'undefined' ||
-           trimmedValue === '-';
-  }
+  // For primitive values, convert to string
+  return String(value);
+};
+
+/**
+ * Check if a value is effectively empty after normalization
+ */
+export const isEmptyValue = (value: any): boolean => {
+  // Normalize the value first
+  const normalizedValue = normalizeFieldValue(value);
   
-  return false;
+  // Check if normalized value is empty or special "empty" values
+  if (!normalizedValue) return true;
+  
+  const trimmedLower = normalizedValue.trim().toLowerCase();
+  return trimmedLower === '' || 
+         trimmedLower === 'n/a' || 
+         trimmedLower === 'na' || 
+         trimmedLower === 'none' || 
+         trimmedLower === 'null' ||
+         trimmedLower === 'undefined' ||
+         trimmedLower === '-';
 };
 
 /**
  * Specific check for unassigned drivers
  */
 export const isUnassignedDriver = (value: any): boolean => {
-  // Check for undefined or null (including objects that represent undefined)
-  if (isEmptyValue(value)) return true;
+  // First normalize the value
+  const normalizedValue = normalizeFieldValue(value);
+  
+  // Check if it's empty (which is effectively unassigned)
+  if (isEmptyValue(normalizedValue)) return true;
   
   // Check specifically for the string "Unassigned"
-  if (typeof value === 'string') {
-    return value.trim().toLowerCase() === 'unassigned';
-  }
-  
-  // Check for object with value property equal to "Unassigned"
-  if (typeof value === 'object' && value !== null && 'value' in value) {
-    const objValue = value.value;
-    if (typeof objValue === 'string') {
-      return objValue.trim().toLowerCase() === 'unassigned';
-    }
-  }
-  
-  return false;
+  return normalizedValue.trim().toLowerCase() === 'unassigned';
 };
 
 /**
@@ -77,13 +84,10 @@ export const validateField = (
   // Reset validation message
   setValidationMessage(null);
   
-  // Handle object representation of values
-  let processedValue = value;
-  if (typeof value === 'object' && value !== null && 'value' in value) {
-    processedValue = value.value;
-  }
+  // Normalize the value first for consistent handling
+  const normalizedValue = normalizeFieldValue(value);
   
-  if (isEmptyValue(processedValue)) {
+  if (isEmptyValue(normalizedValue)) {
     if (fieldName === 'tripNumber') {
       setValidationMessage('Trip Number cannot be empty');
       return false;
@@ -95,35 +99,37 @@ export const validateField = (
     }
   }
   
-  if (fieldName === 'tripNumber' && !isEmptyValue(processedValue)) {
-    // Make sure value is treated as a string
-    const stringValue = String(typeof processedValue === 'object' ? 
-      (processedValue as any)?.value || '' : processedValue || '');
-    
+  if (fieldName === 'tripNumber' && !isEmptyValue(normalizedValue)) {
     // Check for noise/test values
-    if (isNoiseOrTestTripNumber(stringValue)) {
+    if (isNoiseOrTestTripNumber(normalizedValue)) {
       setValidationMessage('Warning: This appears to be a test/noise value');
       return false;
     }
     
     // Check for N/A values
-    if (['n/a', 'na', 'none', 'null', 'undefined'].includes(stringValue.toLowerCase())) {
+    if (['n/a', 'na', 'none', 'null', 'undefined'].includes(normalizedValue.toLowerCase())) {
       setValidationMessage('Trip Number cannot be N/A or None');
       return false;
     }
     
     // Validate proper trip number format (e.g. TR-123456)
     const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
-    if (!tripNumberPattern.test(stringValue.trim()) && stringValue.trim() !== '') {
+    if (!tripNumberPattern.test(normalizedValue.trim()) && normalizedValue.trim() !== '') {
       setValidationMessage('Warning: Trip Number format may be incorrect. Expected format: TR-123456 or 123456');
       // Still allow it but with a warning
     }
   }
   
-  if (fieldName === 'driver' && isUnassignedDriver(processedValue)) {
+  if (fieldName === 'driver' && isUnassignedDriver(normalizedValue)) {
     setValidationMessage('Driver cannot be "Unassigned"');
     return false;
   }
   
   return true;
 };
+
+/**
+ * Exports the legacy processFieldValue name for backward compatibility
+ * but uses the new normalizeFieldValue implementation
+ */
+export const processFieldValue = normalizeFieldValue;
