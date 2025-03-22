@@ -2,27 +2,25 @@
 import { DeliveryOrder } from "./csvParser";
 
 // Extend the DeliveryOrder type to include dispatcher investigation fields
-declare module '@/utils/csvParser' {
-  interface DeliveryOrder {
-    createdAt?: string;
-    assignedAt?: string;
-    pickedUpAt?: string;
-    deliveredAt?: string;
-    
-    dispatcher?: string;
-    driverId?: string;
-    
-    priority?: 'STAT' | 'High' | 'Medium' | 'Low';
-    status?: 'Created' | 'Assigned' | 'In Progress' | 'Delivered' | 'Cancelled';
-    
-    // For optimization results
-    proposedDriverId?: string;
-    proposedDriver?: string;
-    proposedDistance?: number;
-    
-    // Flag for suspicious delays
-    hasSuspiciousDelay?: boolean;
-  }
+export interface ExtendedDeliveryOrder extends DeliveryOrder {
+  createdAt?: string;
+  assignedAt?: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
+  
+  dispatcher?: string;
+  driverId?: string;
+  
+  priority?: 'STAT' | 'High' | 'Medium' | 'Low';
+  status?: 'Created' | 'Assigned' | 'In Progress' | 'Delivered' | 'Cancelled';
+  
+  // For optimization results
+  proposedDriverId?: string;
+  proposedDriver?: string;
+  proposedDistance?: number;
+  
+  // Flag for suspicious delays
+  hasSuspiciousDelay?: boolean;
 }
 
 export enum PriorityLevel {
@@ -41,7 +39,7 @@ export enum OrderStatus {
 }
 
 // Helper function to enhance orders with mock time data for demonstration
-export const enhanceOrdersWithTimeData = (orders: DeliveryOrder[]): DeliveryOrder[] => {
+export const enhanceOrdersWithTimeData = (orders: DeliveryOrder[]): ExtendedDeliveryOrder[] => {
   const now = new Date();
   
   return orders.map(order => {
@@ -59,7 +57,7 @@ export const enhanceOrdersWithTimeData = (orders: DeliveryOrder[]): DeliveryOrde
     const driverId = `D100${Math.floor(Math.random() * 5) + 1}`;
     
     // Create enhanced order
-    const enhancedOrder: DeliveryOrder = {
+    const enhancedOrder: ExtendedDeliveryOrder = {
       ...order,
       createdAt: createdAt.toISOString(),
       assignedAt: assignedAt.toISOString(),

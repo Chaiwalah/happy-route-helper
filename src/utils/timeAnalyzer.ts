@@ -1,5 +1,6 @@
 
 import { DeliveryOrder } from "./csvParser";
+import { ExtendedDeliveryOrder } from "./dispatchTypes";
 
 export interface TimeEvent {
   timestamp: Date;
@@ -75,7 +76,7 @@ export const getMockDriverSchedules = (date: Date): DriverSchedule[] => {
 };
 
 // Check if an order has suspicious delays
-export const checkForSuspiciousDelays = (order: DeliveryOrder): boolean => {
+export const checkForSuspiciousDelays = (order: ExtendedDeliveryOrder): boolean => {
   if (!order.createdAt || !order.assignedAt) return false;
   
   const createdDate = new Date(order.createdAt);
@@ -96,14 +97,14 @@ export const checkForSuspiciousDelays = (order: DeliveryOrder): boolean => {
 
 // Simulate route optimization
 export const optimizeRoutes = (
-  orders: DeliveryOrder[],
+  orders: ExtendedDeliveryOrder[],
   drivers: DriverSchedule[]
 ): OptimizationResult => {
   // This is a simplified optimization algorithm for demonstration purposes
   // In a real application, you'd use a more sophisticated routing algorithm
   
   // Create a deep copy of orders to avoid modifying originals
-  const optimizedOrders = JSON.parse(JSON.stringify(orders)) as DeliveryOrder[];
+  const optimizedOrders = JSON.parse(JSON.stringify(orders)) as ExtendedDeliveryOrder[];
   
   // Calculate original metrics
   const originalTotalDistance = orders.reduce((sum, order) => sum + (order.estimatedDistance || 0), 0);
