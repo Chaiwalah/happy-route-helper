@@ -10,7 +10,7 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
  * Handles all possible input types including object representations
  */
 export const normalizeFieldValue = (value: any): string => {
-  // Handle undefined or null
+  // Handle null and undefined - these are truly missing values
   if (value === undefined || value === null) return '';
   
   // Handle object with _type property (special case from some parsers)
@@ -43,7 +43,10 @@ export const normalizeFieldValue = (value: any): string => {
  * Check if a value is effectively empty after normalization
  */
 export const isEmptyValue = (value: any): boolean => {
-  // Normalize the value first
+  // Null and undefined are always considered empty
+  if (value === null || value === undefined) return true;
+  
+  // Normalize the value first for other cases
   const normalizedValue = normalizeFieldValue(value);
   
   // Check if normalized value is empty or special "empty" values
@@ -61,20 +64,29 @@ export const isEmptyValue = (value: any): boolean => {
 
 /**
  * Specific check for unassigned drivers
+ * Now distinguishes between null (missing) and explicitly set "Unassigned"
  */
 export const isUnassignedDriver = (value: any): boolean => {
-  // First normalize the value
+  // Null is considered missing, not unassigned
+  if (value === null || value === undefined) return false;
+  
+  // First normalize the value for string comparison
   const normalizedValue = normalizeFieldValue(value);
   
-  // Check if it's empty (which is effectively unassigned)
-  if (isEmptyValue(normalizedValue)) return true;
-  
-  // Check specifically for the string "Unassigned"
+  // Only return true if the value is explicitly "Unassigned"
   return normalizedValue.trim().toLowerCase() === 'unassigned';
 };
 
 /**
+ * Check if driver is missing (null/undefined or empty)
+ */
+export const isMissingDriver = (value: any): boolean => {
+  return value === null || value === undefined || isEmptyValue(value);
+};
+
+/**
  * Validates a field based on field name and value
+ * Now properly distinguishes between missing values and invalid values
  */
 export const validateField = (
   fieldName: string, 
@@ -84,10 +96,23 @@ export const validateField = (
   // Reset validation message
   setValidationMessage(null);
   
-  // Normalize the value first for consistent handling
+  // Handle null and undefined values (truly missing)
+  if (value === null || value === undefined) {
+    if (fieldName === 'tripNumber') {
+      setValidationMessage('Trip Number is missing');
+      return false;
+    }
+    
+    if (fieldName === 'driver') {
+      setValidationMessage('Driver is missing');
+      return false;
+    }
+  }
+  
+  // Normalize the value for other validations
   const normalizedValue = normalizeFieldValue(value);
   
-  if (isEmptyValue(normalizedValue)) {
+  if (isEmptyValue(value) && value !== null && value !== undefined) {
     if (fieldName === 'tripNumber') {
       setValidationMessage('Trip Number cannot be empty');
       return false;
@@ -99,7 +124,7 @@ export const validateField = (
     }
   }
   
-  if (fieldName === 'tripNumber' && !isEmptyValue(normalizedValue)) {
+  if (fieldName === 'tripNumber' && !isEmptyValue(value)) {
     // Check for noise/test values
     if (isNoiseOrTestTripNumber(normalizedValue)) {
       setValidationMessage('Warning: This appears to be a test/noise value');
@@ -120,8 +145,8 @@ export const validateField = (
     }
   }
   
-  if (fieldName === 'driver' && isUnassignedDriver(normalizedValue)) {
-    setValidationMessage('Driver cannot be "Unassigned"');
+  if (fieldName === 'driver' && isUnassignedDriver(value)) {
+    setValidationMessage('Driver is set to "Unassigned" - please assign a driver');
     return false;
   }
   

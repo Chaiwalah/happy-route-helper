@@ -350,6 +350,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
 
 /**
  * Extract trip number from raw row data with comprehensive matching
+ * Now ensures consistent handling of missing trip numbers as null
  */
 function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): string | null {
   // All possible trip number field variations
@@ -364,13 +365,16 @@ function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): st
   // Try each variation until we find a non-empty value
   for (const fieldName of tripNumberVariations) {
     const value = rawRow[fieldName];
-    if (value && value.trim() !== '') {
-      // Log for specific test orders
-      if ([16, 21, 22, 23].includes(rowIndex)) {
-        console.log(`Found trip number in "${fieldName}" column for order-${rowIndex+1}: "${value}"`);
-      }
-      return value.trim();
+    
+    // Skip empty or undefined values
+    if (!value || value.trim() === '') continue;
+    
+    // Log found trip number for specific test orders
+    if ([16, 21, 22, 23].includes(rowIndex)) {
+      console.log(`Found trip number in "${fieldName}" column for order-${rowIndex+1}: "${value}"`);
     }
+    
+    return value.trim();
   }
   
   // Log for specific test orders if no trip number found
@@ -378,11 +382,13 @@ function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): st
     console.log(`No trip number found in any column for order-${rowIndex+1}`);
   }
   
+  // Return null to explicitly indicate missing value - NOT an empty string or object
   return null;
 }
 
 /**
  * Extract driver name from raw row data with comprehensive matching
+ * Now ensures consistent handling of missing drivers as null
  */
 function extractDriverName(rawRow: Record<string, string>): string | null {
   // All possible driver field variations
@@ -395,12 +401,15 @@ function extractDriverName(rawRow: Record<string, string>): string | null {
   // Try each variation until we find a non-empty value
   for (const fieldName of driverVariations) {
     const value = rawRow[fieldName];
-    if (value && value.trim() !== '') {
-      // Don't normalize to "Unassigned" here - let validation handle that
-      return value.trim();
-    }
+    
+    // Skip empty or undefined values
+    if (!value || value.trim() === '') continue;
+    
+    // Important: Return the raw value, do NOT convert to "Unassigned" here
+    return value.trim();
   }
   
+  // Return null to explicitly indicate missing value - NOT "Unassigned"
   return null;
 }
 

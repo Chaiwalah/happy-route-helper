@@ -1,4 +1,3 @@
-
 "use client"
 
 import { DeliveryOrder } from '@/utils/csvParser';
@@ -8,7 +7,7 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FieldValidationStatus } from './hooks/useOrderVerification';
-import { normalizeFieldValue, isEmptyValue } from './hooks/useOrderVerification/validationUtils';
+import { normalizeFieldValue, isEmptyValue, isUnassignedDriver } from './hooks/useOrderVerification/validationUtils';
 
 interface OrderDetailsProps {
   selectedOrder: DeliveryOrder | null;
@@ -22,7 +21,7 @@ interface OrderDetailsProps {
   validationMessage: string | null;
   suggestedTripNumbers: string[];
   suggestedDrivers: string[];
-  getFieldValidationStatus: (fieldName: string, value: string) => FieldValidationStatus;
+  getFieldValidationStatus: (fieldName: string, value: string | null) => FieldValidationStatus;
 }
 
 export function OrderDetails({
@@ -62,18 +61,50 @@ export function OrderDetails({
     );
   }
 
-  // Get normalized values using our unified normalization function
-  const tripNumberValue = normalizeFieldValue(selectedOrder.tripNumber);
-  const driverValue = normalizeFieldValue(selectedOrder.driver);
-  const pickupValue = normalizeFieldValue(selectedOrder.pickup);
-  const dropoffValue = normalizeFieldValue(selectedOrder.dropoff);
-  const readyTimeValue = normalizeFieldValue(selectedOrder.exReadyTime);
-  const deliveryTimeValue = normalizeFieldValue(selectedOrder.exDeliveryTime);
+  // Safely extract and process field values, properly handling null values
+  // For nulls, we'll display "Missing" in the UI but keep them as null in the data
+  
+  // Process Trip Number - may be null, object, or string
+  const tripNumberValue = selectedOrder.tripNumber === null 
+    ? "Missing" 
+    : normalizeFieldValue(selectedOrder.tripNumber);
+  
+  // Process Driver - may be null, object, string, or "Unassigned"
+  const rawDriverValue = selectedOrder.driver;
+  const driverValue = rawDriverValue === null 
+    ? "Missing" 
+    : normalizeFieldValue(rawDriverValue);
+  
+  // Process other fields with standard normalization
+  const pickupValue = selectedOrder.pickup === null 
+    ? "Missing" 
+    : normalizeFieldValue(selectedOrder.pickup);
+    
+  const dropoffValue = selectedOrder.dropoff === null 
+    ? "Missing" 
+    : normalizeFieldValue(selectedOrder.dropoff);
+    
+  const readyTimeValue = selectedOrder.exReadyTime === null 
+    ? "Missing" 
+    : normalizeFieldValue(selectedOrder.exReadyTime);
+    
+  const deliveryTimeValue = selectedOrder.exDeliveryTime === null 
+    ? "Missing" 
+    : normalizeFieldValue(selectedOrder.exDeliveryTime);
   
   // Validation checks using our unified validation approach
-  const isTripNumberEmpty = isEmptyValue(tripNumberValue);
-  const isTripNumberNoise = !isTripNumberEmpty && isNoiseOrTestTripNumber(tripNumberValue);
-  const isTripNumberNA = !isTripNumberEmpty && ['n/a', 'na', 'none'].includes(tripNumberValue.toLowerCase());
+  const isTripNumberNull = selectedOrder.tripNumber === null;
+  const isTripNumberEmpty = !isTripNumberNull && isEmptyValue(selectedOrder.tripNumber);
+  const isTripNumberNoise = !isTripNumberNull && !isTripNumberEmpty && 
+    isNoiseOrTestTripNumber(normalizeFieldValue(selectedOrder.tripNumber));
+  const isTripNumberNA = !isTripNumberNull && !isTripNumberEmpty && 
+    ['n/a', 'na', 'none'].includes(normalizeFieldValue(selectedOrder.tripNumber).toLowerCase());
+  
+  // Driver validation checks
+  const isDriverNull = selectedOrder.driver === null;
+  const isDriverEmpty = !isDriverNull && isEmptyValue(selectedOrder.driver);
+  const isDriverUnassigned = !isDriverNull && !isDriverEmpty && 
+    isUnassignedDriver(selectedOrder.driver);
   
   // Safe access to missingFields with default empty array
   const missingFields = selectedOrder.missingFields || [];
@@ -81,18 +112,20 @@ export function OrderDetails({
   // Enhanced debug information with structured data
   console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
     tripNumber: {
-      value: tripNumberValue || 'EMPTY',
+      value: tripNumberValue,
       raw: selectedOrder.tripNumber,
+      isNull: isTripNumberNull,
       isEmpty: isTripNumberEmpty,
       isNoise: isTripNumberNoise,
       isNA: isTripNumberNA,
       isMissing: missingFields.includes('tripNumber')
     },
     driver: {
-      value: driverValue || 'EMPTY',
+      value: driverValue,
       raw: selectedOrder.driver,
-      isEmpty: isEmptyValue(driverValue),
-      isUnassigned: driverValue.toLowerCase() === 'unassigned',
+      isNull: isDriverNull,
+      isEmpty: isDriverEmpty,
+      isUnassigned: isDriverUnassigned,
       isMissing: missingFields.includes('driver')
     },
     editingField: editingField || 'NONE',
@@ -123,13 +156,15 @@ export function OrderDetails({
                   fieldName="tripNumber"
                   value={editingField === 'tripNumber' ? fieldValue : tripNumberValue}
                   isEditing={editingField === 'tripNumber'}
-                  isError={isTripNumberEmpty || 
+                  isError={isTripNumberNull || 
+                           isTripNumberEmpty || 
                            isTripNumberNA ||
                            missingFields.includes('tripNumber')}
                   isNoise={isTripNumberNoise}
                   isSaving={isSavingField}
                   suggestedValues={suggestedTripNumbers}
-                  validationStatus={getFieldValidationStatus('tripNumber', editingField === 'tripNumber' ? fieldValue : tripNumberValue)}
+                  validationStatus={getFieldValidationStatus('tripNumber', 
+                    editingField === 'tripNumber' ? fieldValue : selectedOrder.tripNumber)}
                   validationMessage="Trip Numbers are critical for route organization"
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
@@ -154,13 +189,17 @@ export function OrderDetails({
                   fieldName="driver"
                   value={editingField === 'driver' ? fieldValue : driverValue}
                   isEditing={editingField === 'driver'}
-                  isError={isEmptyValue(driverValue) || 
-                           driverValue.toLowerCase() === 'unassigned' ||
+                  isError={isDriverNull || 
+                           isDriverEmpty ||
                            missingFields.includes('driver')}
+                  isWarning={isDriverUnassigned}
                   isSaving={isSavingField}
                   suggestedValues={suggestedDrivers}
-                  validationStatus={getFieldValidationStatus('driver', editingField === 'driver' ? fieldValue : driverValue)}
-                  validationMessage="Driver names should be consistent"
+                  validationStatus={getFieldValidationStatus('driver', 
+                    editingField === 'driver' ? fieldValue : selectedOrder.driver)}
+                  validationMessage={isDriverUnassigned ? 
+                    "Driver should not be 'Unassigned'" : 
+                    "Driver names should be consistent"}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
                   onSave={onFieldUpdate}
@@ -185,9 +224,10 @@ export function OrderDetails({
                     fieldName="pickup"
                     value={editingField === 'pickup' ? fieldValue : pickupValue}
                     isEditing={editingField === 'pickup'}
-                    isError={isEmptyValue(pickupValue)}
+                    isError={selectedOrder.pickup === null || isEmptyValue(selectedOrder.pickup)}
                     isSaving={isSavingField}
-                    validationStatus={getFieldValidationStatus('pickup', editingField === 'pickup' ? fieldValue : pickupValue)}
+                    validationStatus={getFieldValidationStatus('pickup', 
+                      editingField === 'pickup' ? fieldValue : selectedOrder.pickup)}
                     validationMessage="Enter a complete pickup address"
                     onEdit={onFieldEdit}
                     onValueChange={onFieldValueChange}
@@ -210,9 +250,10 @@ export function OrderDetails({
                     fieldName="dropoff"
                     value={editingField === 'dropoff' ? fieldValue : dropoffValue}
                     isEditing={editingField === 'dropoff'}
-                    isError={isEmptyValue(dropoffValue)}
+                    isError={selectedOrder.dropoff === null || isEmptyValue(selectedOrder.dropoff)}
                     isSaving={isSavingField}
-                    validationStatus={getFieldValidationStatus('dropoff', editingField === 'dropoff' ? fieldValue : dropoffValue)}
+                    validationStatus={getFieldValidationStatus('dropoff', 
+                      editingField === 'dropoff' ? fieldValue : selectedOrder.dropoff)}
                     validationMessage="Enter a complete delivery address"
                     onEdit={onFieldEdit}
                     onValueChange={onFieldValueChange}
@@ -235,7 +276,8 @@ export function OrderDetails({
             value={editingField === 'exReadyTime' ? fieldValue : readyTimeValue}
             isEditing={editingField === 'exReadyTime'}
             isSaving={isSavingField}
-            validationStatus={getFieldValidationStatus('exReadyTime', editingField === 'exReadyTime' ? fieldValue : readyTimeValue)}
+            validationStatus={getFieldValidationStatus('exReadyTime', 
+              editingField === 'exReadyTime' ? fieldValue : selectedOrder.exReadyTime)}
             onEdit={onFieldEdit}
             onValueChange={onFieldValueChange}
             onSave={onFieldUpdate}
@@ -247,7 +289,8 @@ export function OrderDetails({
             value={editingField === 'exDeliveryTime' ? fieldValue : deliveryTimeValue}
             isEditing={editingField === 'exDeliveryTime'}
             isSaving={isSavingField}
-            validationStatus={getFieldValidationStatus('exDeliveryTime', editingField === 'exDeliveryTime' ? fieldValue : deliveryTimeValue)}
+            validationStatus={getFieldValidationStatus('exDeliveryTime', 
+              editingField === 'exDeliveryTime' ? fieldValue : selectedOrder.exDeliveryTime)}
             onEdit={onFieldEdit}
             onValueChange={onFieldValueChange}
             onSave={onFieldUpdate}

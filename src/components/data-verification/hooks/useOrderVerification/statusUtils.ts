@@ -1,6 +1,7 @@
+
 import { DeliveryOrder } from '@/utils/csvParser';
 import { FieldValidationStatus } from './types';
-import { isEmptyValue, isUnassignedDriver, normalizeFieldValue } from './validationUtils';
+import { isEmptyValue, isUnassignedDriver, isMissingDriver, normalizeFieldValue } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
 /**
@@ -13,15 +14,27 @@ export const processFieldValue = normalizeFieldValue;
  */
 export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warning' | 'error' => {
   // Check for trip number issues - most critical
+  if (order.tripNumber === null) {
+    return 'error'; // Missing trip number
+  }
+  
   const tripNumberValue = normalizeFieldValue(order.tripNumber);
   if (isEmptyValue(order.tripNumber) || isNoiseOrTestTripNumber(tripNumberValue)) {
     return 'error';
   }
   
-  // Check for driver issues
+  // Check for driver issues - now properly distinguishes missing vs unassigned
+  if (order.driver === null) {
+    return 'warning'; // Missing driver
+  }
+  
   const driverValue = normalizeFieldValue(order.driver);
-  if (isEmptyValue(order.driver) || isUnassignedDriver(driverValue)) {
-    return 'warning';
+  if (isUnassignedDriver(order.driver)) {
+    return 'warning'; // Explicitly set to "Unassigned"
+  }
+  
+  if (isMissingDriver(order.driver)) {
+    return 'warning'; // Empty or invalid driver value
   }
   
   // Check for other missing fields - less critical
@@ -41,17 +54,29 @@ export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warni
 /**
  * Get validation status for a specific field
  */
-export const getFieldValidationStatus = (fieldName: string, value: string): FieldValidationStatus => {
-  // Process the value to handle object representations
+export const getFieldValidationStatus = (fieldName: string, value: string | null): FieldValidationStatus => {
+  // Handle null values specifically - these are truly missing
+  if (value === null) {
+    if (fieldName === 'tripNumber') return 'error';
+    if (fieldName === 'driver') return 'error';
+    if (fieldName === 'pickup' || fieldName === 'dropoff') return 'error';
+    return 'warning';
+  }
+  
+  // For non-null values, normalize and validate
   const processedValue = normalizeFieldValue(value);
   
   if (isEmptyValue(processedValue)) {
     // Critical fields
     if (fieldName === 'tripNumber' || 
-        fieldName === 'driver' || 
         fieldName === 'pickup' || 
         fieldName === 'dropoff') {
       return 'error';
+    }
+    
+    // Special case for driver - distinguish between "Unassigned" (warning) and empty (error)
+    if (fieldName === 'driver') {
+      return processedValue.toLowerCase() === 'unassigned' ? 'warning' : 'error';
     }
     
     // Optional fields
@@ -84,7 +109,7 @@ export const getFieldValidationStatus = (fieldName: string, value: string): Fiel
   
   // Driver should not be "Unassigned"
   if (fieldName === 'driver' && isUnassignedDriver(processedValue)) {
-    return 'error';
+    return 'warning'; // Changed from error to warning
   }
   
   return 'valid';
