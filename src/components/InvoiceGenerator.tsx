@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -44,7 +43,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   const [settings, setSettings] = useState<InvoiceGenerationSettings>({
     allowManualDistanceAdjustment: true,
     flagDriverLoadThreshold: 10,
-    flagDistanceThreshold: 50,
+    flagDistanceThreshold: 150, // Updated from 50 to 150 miles
     flagTimeWindowThreshold: 30
   });
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -252,9 +251,9 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                   </div>
                   <Slider 
                     id="distance-threshold"
-                    min={20}
-                    max={100}
-                    step={5}
+                    min={50}
+                    max={200}
+                    step={10}
                     value={[settings.flagDistanceThreshold]}
                     onValueChange={(value) => setSettings({ ...settings, flagDistanceThreshold: value[0] })}
                   />

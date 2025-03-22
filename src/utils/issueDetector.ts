@@ -9,11 +9,11 @@ export const detectIssues = (
   const issues: Issue[] = [];
   const driverOrderCounts: Record<string, number> = {};
   
-  // Default settings
+  // Default settings - updating the flagDistanceThreshold from 50 to 150 miles
   const effectiveSettings: InvoiceGenerationSettings = {
     allowManualDistanceAdjustment: true,
     flagDriverLoadThreshold: 10,
-    flagDistanceThreshold: 50, 
+    flagDistanceThreshold: 150, // Updated from 50 to 150 miles for statewide deliveries
     flagTimeWindowThreshold: 30,
     ...settings
   };
@@ -61,13 +61,13 @@ export const detectIssues = (
       });
     }
     
-    // Flag orders with long distances - may indicate wrong address or inefficient routing
+    // Flag orders with long distances - updated threshold to 150 miles
     if (order.estimatedDistance && order.estimatedDistance > effectiveSettings.flagDistanceThreshold) {
       issues.push({
         orderId: order.id,
         driver,
-        message: 'Unusually long route',
-        details: `Order ${order.id} has an estimated distance of ${order.estimatedDistance.toFixed(1)} miles, which exceeds the ${effectiveSettings.flagDistanceThreshold} mile threshold.`,
+        message: 'Exceptionally long route',
+        details: `Order ${order.id} has an estimated distance of ${order.estimatedDistance.toFixed(1)} miles, which exceeds the ${effectiveSettings.flagDistanceThreshold} mile threshold for statewide deliveries.`,
         severity: 'warning'
       });
     }

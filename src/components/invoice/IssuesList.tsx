@@ -60,9 +60,10 @@ export const IssuesList: React.FC<IssuesListProps> = ({ issues }) => {
                 className="h-8 w-8 text-green-600 dark:text-green-400" 
                 fill="none" 
                 viewBox="0 0 24 24" 
-                stroke="currentColor"
+                stroke="currentColor" 
+                strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <p className="text-lg font-medium text-gray-700 dark:text-gray-300">All clear!</p>
