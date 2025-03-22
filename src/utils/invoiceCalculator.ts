@@ -1,5 +1,6 @@
 
 import { DeliveryOrder } from './csvParser';
+import { calculateRouteDistance } from './mapboxService';
 
 export type Issue = {
   orderId: string;
@@ -81,7 +82,39 @@ const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): Map<string, Delivery
   return routes;
 };
 
-export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
+// Calculate the total route distance for multi-stop routes using Mapbox Directions API
+const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder[]): Promise<number> => {
+  // Extract all addresses in order
+  const addresses: string[] = [];
+  
+  // Add all pickup and dropoff locations in sequence
+  routeOrders.forEach(order => {
+    if (order.pickup && !addresses.includes(order.pickup)) {
+      addresses.push(order.pickup);
+    }
+    
+    if (order.dropoff && !addresses.includes(order.dropoff)) {
+      addresses.push(order.dropoff);
+    }
+  });
+  
+  // If we have enough addresses, calculate the route distance
+  if (addresses.length >= 2) {
+    try {
+      const routeDistance = await calculateRouteDistance(addresses);
+      if (routeDistance !== null) {
+        return Number(routeDistance.toFixed(1));
+      }
+    } catch (error) {
+      console.error('Error calculating multi-stop route distance:', error);
+    }
+  }
+  
+  // If API call fails or not enough addresses, sum individual estimated distances
+  return routeOrders.reduce((sum, order) => sum + (order.estimatedDistance || 0), 0);
+};
+
+export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice> => {
   // Format date for invoice 
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -93,10 +126,11 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
   const items: InvoiceItem[] = [];
   
   // Process each route
-  routes.forEach((routeOrders, routeKey) => {
-    // Calculate total route distance - use the maximum estimated distance
-    // as a simplification (in a real system, you'd calculate the optimal route)
-    const totalDistance = Math.max(...routeOrders.map(order => order.estimatedDistance || 0));
+  for (const [routeKey, routeOrders] of routes.entries()) {
+    // Calculate total route distance using Mapbox Directions API for multi-stop routes
+    const totalDistance = routeOrders.length > 1 
+      ? await calculateMultiStopRouteDistance(routeOrders)
+      : routeOrders[0].estimatedDistance || 0;
     
     // Determine if it's a single order or multi-stop route
     const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
@@ -160,7 +194,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
         totalCost: itemTotalCost
       });
     });
-  });
+  }
   
   // Calculate totals
   const totalDistance = items.reduce((sum, item) => sum + item.distance, 0);
@@ -257,12 +291,6 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
       });
     }
   });
-  
-  // Debug check to ensure we don't have more issues than orders (excluding driver load issues)
-  const missingFieldIssues = issues.filter(issue => issue.message === 'Incomplete order data');
-  if (missingFieldIssues.length > orders.length) {
-    console.warn(`Warning: More missing field issues (${missingFieldIssues.length}) than total orders (${orders.length})`);
-  }
   
   return issues;
 };

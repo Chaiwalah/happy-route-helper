@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef } from 'react';
@@ -24,9 +23,10 @@ interface InvoiceGeneratorProps {
 export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
 
-  const handleGenerateInvoice = () => {
+  const handleGenerateInvoice = async () => {
     if (orders.length === 0) {
       toast({
         title: "No orders available",
@@ -36,25 +36,42 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       return;
     }
     
-    // Generate invoice using the new billing logic
-    const generatedInvoice = generateInvoice(orders);
-    setInvoice(generatedInvoice);
+    setIsGenerating(true);
+    toast({
+      title: "Generating invoice",
+      description: "Calculating routes using Mapbox Directions API...",
+    });
     
-    // Detect any potential issues
-    const detectedIssues = detectIssues(orders);
-    setIssues(detectedIssues);
-    
-    if (detectedIssues.length > 0) {
+    try {
+      // Generate invoice using the new billing logic with Mapbox integration
+      const generatedInvoice = await generateInvoice(orders);
+      setInvoice(generatedInvoice);
+      
+      // Detect any potential issues
+      const detectedIssues = detectIssues(orders);
+      setIssues(detectedIssues);
+      
+      if (detectedIssues.length > 0) {
+        toast({
+          title: `${detectedIssues.length} issue${detectedIssues.length > 1 ? 's' : ''} detected`,
+          description: "Check the Issues tab for details",
+          variant: "warning",
+        });
+      } else {
+        toast({
+          title: "Invoice generated successfully",
+          description: `Total: $${generatedInvoice.totalCost.toFixed(2)} for ${orders.length} orders`,
+        });
+      }
+    } catch (error) {
+      console.error('Error generating invoice:', error);
       toast({
-        title: `${detectedIssues.length} issue${detectedIssues.length > 1 ? 's' : ''} detected`,
-        description: "Check the Issues tab for details",
-        variant: "warning",
+        title: "Error generating invoice",
+        description: "There was a problem calculating the routes. Please try again.",
+        variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Invoice generated successfully",
-        description: `Total: $${generatedInvoice.totalCost.toFixed(2)} for ${orders.length} orders`,
-      });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -227,7 +244,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
         <div>
           <h3 className="text-lg font-medium">Advanced Billing System</h3>
           <p className="text-sm text-muted-foreground">
-            Pricing automatically calculated based on route type and distance
+            Pricing automatically calculated based on route type and distance using Mapbox Directions API
           </p>
           
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -246,8 +263,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
           </div>
         </div>
         
-        <Button onClick={handleGenerateInvoice}>
-          Generate Invoice
+        <Button onClick={handleGenerateInvoice} disabled={isGenerating}>
+          {isGenerating ? "Calculating Routes..." : "Generate Invoice"}
         </Button>
       </div>
       
