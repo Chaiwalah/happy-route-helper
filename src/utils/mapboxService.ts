@@ -19,6 +19,30 @@ const routeDistanceCache: { [key: string]: number | null } = {};
 // Track failed addresses to avoid repeated failures
 const failedAddresses = new Set<string>();
 
+// Throttle control for API requests - prevent too many at once
+let pendingRequests = 0;
+const MAX_CONCURRENT_REQUESTS = 3;
+const REQUEST_QUEUE: Array<() => Promise<void>> = [];
+
+// Helper to process the request queue
+const processQueue = async () => {
+  if (REQUEST_QUEUE.length === 0 || pendingRequests >= MAX_CONCURRENT_REQUESTS) return;
+  
+  pendingRequests++;
+  const request = REQUEST_QUEUE.shift();
+  if (request) {
+    try {
+      await request();
+    } catch (error) {
+      console.error('Error processing queued request:', error);
+    } finally {
+      pendingRequests--;
+      // Process next request after a small delay
+      setTimeout(processQueue, 50);
+    }
+  }
+};
+
 // Convert an address string to coordinates
 export const geocodeAddress = async (address: string): Promise<{longitude: number, latitude: number} | null> => {
   if (!address || address.trim() === '') {
@@ -37,48 +61,61 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
     return null;
   }
   
-  try {
-    console.log(`Geocoding address: ${address}`);
-    const encodedAddress = encodeURIComponent(address);
-    const response = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`,
-      { signal: AbortSignal.timeout(8000) } // Add timeout to fetch to prevent hanging
-    );
+  // Create a promise that will be resolved when this request is processed
+  return new Promise((resolve) => {
+    const performRequest = async () => {
+      try {
+        console.log(`Geocoding address: ${address}`);
+        const encodedAddress = encodeURIComponent(address);
+        const response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`,
+          { signal: AbortSignal.timeout(5000) } // Reduced timeout from 8s to 5s
+        );
+        
+        if (!response.ok) {
+          throw new Error(`Geocoding API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.features && data.features.length > 0) {
+          const coords = {
+            longitude: data.features[0].center[0],
+            latitude: data.features[0].center[1]
+          };
+          
+          // Cache the result
+          geocodingCache[address] = coords;
+          resolve(coords);
+        } else {
+          console.warn(`No geocoding results for address: ${address}`);
+          geocodingCache[address] = null;
+          failedAddresses.add(address); // Mark as failed
+          resolve(null);
+        }
+      } catch (error) {
+        console.error('Error geocoding address:', error);
+        
+        // Add to failed addresses if it's a persistent issue
+        if (error instanceof Error && 
+          (error.message.includes('timeout') || error.message.includes('network'))) {
+          failedAddresses.add(address);
+        }
+        
+        // Cache failures too (but as null)
+        geocodingCache[address] = null;
+        resolve(null);
+      } finally {
+        // Process next request
+        pendingRequests--;
+        setTimeout(processQueue, 50);
+      }
+    };
     
-    if (!response.ok) {
-      throw new Error(`Geocoding API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.features && data.features.length > 0) {
-      const coords = {
-        longitude: data.features[0].center[0],
-        latitude: data.features[0].center[1]
-      };
-      
-      // Cache the result
-      geocodingCache[address] = coords;
-      return coords;
-    } else {
-      console.warn(`No geocoding results for address: ${address}`);
-      geocodingCache[address] = null;
-      failedAddresses.add(address); // Mark as failed
-      return null;
-    }
-  } catch (error) {
-    console.error('Error geocoding address:', error);
-    
-    // Add to failed addresses if it's a persistent issue
-    if (error instanceof Error && 
-       (error.message.includes('timeout') || error.message.includes('network'))) {
-      failedAddresses.add(address);
-    }
-    
-    // Cache failures too (but as null)
-    geocodingCache[address] = null;
-    return null;
-  }
+    // Add to queue and process
+    REQUEST_QUEUE.push(performRequest);
+    processQueue();
+  });
 };
 
 // Generate a cache key for routes
@@ -101,55 +138,94 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
     return routeDistanceCache[routeKey];
   }
   
-  console.log(`Calculating distance between ${addresses.length} addresses`);
-  
-  // First geocode all addresses
-  const geocodingPromises = addresses.map(address => geocodeAddress(address));
-  const coordinates = await Promise.all(geocodingPromises);
-  
-  // Check if any geocoding failed
-  if (coordinates.some(coord => coord === null)) {
-    console.warn('One or more addresses could not be geocoded');
-    routeDistanceCache[routeKey] = null; // Cache the failure
-    return null;
-  }
-  
-  try {
-    // Format coordinates for Mapbox Directions API
-    const coordsString = coordinates
-      .filter((coord): coord is {longitude: number, latitude: number} => coord !== null)
-      .map(coord => `${coord.longitude},${coord.latitude}`)
-      .join(';');
-    
-    const response = await fetch(
-      `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${MAPBOX_TOKEN}`,
-      { signal: AbortSignal.timeout(8000) } // Add timeout
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Directions API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.routes && data.routes.length > 0) {
-      // Convert meters to miles (1 meter = 0.000621371 miles)
-      const distanceInMiles = data.routes[0].distance * 0.000621371;
-      
-      // Cache the result
-      routeDistanceCache[routeKey] = distanceInMiles;
-      return distanceInMiles;
-    } else {
-      console.warn('No route found between the provided addresses');
-      routeDistanceCache[routeKey] = null;
+  // If this is a multi-stop route (more than 2 addresses), 
+  // estimate the distance as a sum of pairs to avoid expensive API calls
+  if (addresses.length > 2) {
+    console.log(`Using distance estimation for ${addresses.length} addresses`);
+    try {
+      let totalDistance = 0;
+      // Calculate distances between consecutive pairs
+      for (let i = 0; i < addresses.length - 1; i++) {
+        const pairDistance = await calculateRouteDistance([addresses[i], addresses[i+1]]);
+        if (pairDistance === null) {
+          // If any segment fails, return null
+          return null;
+        }
+        totalDistance += pairDistance;
+      }
+      // Apply a small reduction factor for multi-stop routes (since direct routes are usually more efficient)
+      const estimatedDistance = totalDistance * 0.9;
+      routeDistanceCache[routeKey] = estimatedDistance;
+      return estimatedDistance;
+    } catch (error) {
+      console.error('Error in multi-stop estimation:', error);
       return null;
     }
-  } catch (error) {
-    console.error('Error calculating route distance:', error);
-    // Cache failed routes too
-    routeDistanceCache[routeKey] = null;
-    return null;
   }
+  
+  console.log(`Calculating distance between ${addresses.length} addresses`);
+  
+  // Create a promise that will be resolved when this request is processed
+  return new Promise((resolve) => {
+    const performRequest = async () => {
+      try {
+        // First geocode all addresses
+        const geocodingPromises = addresses.map(address => geocodeAddress(address));
+        const coordinates = await Promise.all(geocodingPromises);
+        
+        // Check if any geocoding failed
+        if (coordinates.some(coord => coord === null)) {
+          console.warn('One or more addresses could not be geocoded');
+          routeDistanceCache[routeKey] = null; // Cache the failure
+          resolve(null);
+          return;
+        }
+        
+        // Format coordinates for Mapbox Directions API
+        const coordsString = coordinates
+          .filter((coord): coord is {longitude: number, latitude: number} => coord !== null)
+          .map(coord => `${coord.longitude},${coord.latitude}`)
+          .join(';');
+        
+        const response = await fetch(
+          `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${MAPBOX_TOKEN}`,
+          { signal: AbortSignal.timeout(5000) } // Reduced timeout from 8s to 5s
+        );
+        
+        if (!response.ok) {
+          throw new Error(`Directions API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.routes && data.routes.length > 0) {
+          // Convert meters to miles (1 meter = 0.000621371 miles)
+          const distanceInMiles = data.routes[0].distance * 0.000621371;
+          
+          // Cache the result
+          routeDistanceCache[routeKey] = distanceInMiles;
+          resolve(distanceInMiles);
+        } else {
+          console.warn('No route found between the provided addresses');
+          routeDistanceCache[routeKey] = null;
+          resolve(null);
+        }
+      } catch (error) {
+        console.error('Error calculating route distance:', error);
+        // Cache failed routes too
+        routeDistanceCache[routeKey] = null;
+        resolve(null);
+      } finally {
+        // Process next request
+        pendingRequests--;
+        setTimeout(processQueue, 50);
+      }
+    };
+    
+    // Add to queue and process
+    REQUEST_QUEUE.push(performRequest);
+    processQueue();
+  });
 };
 
 // Convert meters to miles

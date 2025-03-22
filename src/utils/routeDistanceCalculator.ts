@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { calculateRouteDistance } from './mapboxService';
 
@@ -52,6 +53,24 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     const fallback = order.estimatedDistance || 0;
     distanceCache[cacheKey] = fallback;
     return fallback;
+  }
+  
+  // For multi-stop routes with more than 5 orders, use a simpler estimation approach
+  // to avoid expensive API calls and performance issues
+  if (routeOrders.length > 5) {
+    console.log(`Using simplified distance calculation for large route with ${routeOrders.length} orders`);
+    
+    // Sum individual estimates with a reduction factor
+    const totalDistance = routeOrders.reduce((sum, order) => {
+      if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
+        return sum + parseFloat(order.distance.toString());
+      }
+      return sum + (order.estimatedDistance || 0);
+    }, 0) * 0.85; // Apply 15% reduction for route optimization
+    
+    const distance = Number(totalDistance.toFixed(1));
+    distanceCache[cacheKey] = distance;
+    return distance;
   }
   
   // For multi-stop routes, first check if all orders have valid estimatedDistance values
