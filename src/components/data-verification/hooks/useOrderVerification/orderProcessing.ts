@@ -35,7 +35,9 @@ export const processOrdersForVerification = (
     
     // First, ensure we handle trip number validation correctly
     const hasTripNumber = !isEmptyValue(order.tripNumber);
-    const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(order.tripNumber!);
+    const isTripNumberNoise = hasTripNumber && 
+      isNoiseOrTestTripNumber(String(typeof order.tripNumber === 'object' ? 
+        order.tripNumber.value || '' : order.tripNumber || ''));
     
     // Log raw trip number for debugging
     logDebug(`Raw trip number for ${order.id}:`, {
@@ -51,9 +53,13 @@ export const processOrdersForVerification = (
       isEmptyValue: isEmptyValue(order.tripNumber)
     });
     
-    // If trip number is undefined or null, initialize it to an empty string
-    if (order.tripNumber === undefined || order.tripNumber === null) {
+    // Normalize the trip number value
+    if (isEmptyValue(order.tripNumber)) {
+      // If trip number is undefined, null, or an undefined object, set it to empty string
       order.tripNumber = '';
+    } else if (typeof order.tripNumber === 'object') {
+      // If it's an object, try to extract the value
+      order.tripNumber = String(order.tripNumber.value || '');
     }
     
     if (hasTripNumber && !isTripNumberNoise) {
@@ -81,9 +87,14 @@ export const processOrdersForVerification = (
       isUnassigned: isUnassignedDriver(order.driver)
     });
     
-    // If driver is undefined or null, initialize it to an empty string
-    if (order.driver === undefined || order.driver === null) {
-      order.driver = '';
+    // Normalize the driver value
+    if (isEmptyValue(order.driver)) {
+      // If driver is undefined, null, or an undefined object, set to 'Unassigned'
+      order.driver = 'Unassigned';
+    } else if (typeof order.driver === 'object') {
+      // If it's an object, try to extract the value
+      const driverValue = order.driver.value || '';
+      order.driver = driverValue === '' ? 'Unassigned' : String(driverValue);
     }
     
     if (hasValidDriver) {
