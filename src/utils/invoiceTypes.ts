@@ -42,3 +42,24 @@ export type OrderRoute = {
   orders: DeliveryOrder[];
   isMultiStop?: boolean;
 };
+
+export type ParsedDataSummary = {
+  totalOrders: number;
+  missingFields: {
+    count: number;
+    details: Record<string, number>;
+  };
+  drivers: {
+    count: number;
+    names: string[];
+  };
+  routeNumbers: {
+    count: number;
+    multiStopRoutes: number;
+  };
+  addressQuality: {
+    validPickupAddresses: number;
+    validDropoffAddresses: number;
+    missingAddresses: number;
+  };
+};
