@@ -11,7 +11,8 @@ import { updateOrder, approveOrders } from './orderUpdates';
 import { getOrderValidationStatus, getFieldValidationStatus } from './statusUtils';
 import { validateField } from './validationUtils';
 
-export { FieldValidationStatus } from './types';
+// Use 'export type' to re-export the type
+export type { FieldValidationStatus } from './types';
 
 export const useOrderVerification = ({ 
   orders, 
