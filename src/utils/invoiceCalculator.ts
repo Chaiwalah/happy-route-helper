@@ -1,132 +1,31 @@
 
 import { DeliveryOrder } from './csvParser';
-import { calculateRouteDistance } from './mapboxService';
+import { Invoice, InvoiceItem, Issue } from './invoiceTypes';
+import { organizeOrdersIntoRoutes } from './routeOrganizer';
+import { calculateMultiStopRouteDistance } from './routeDistanceCalculator';
+import { calculateInvoiceCosts } from './invoicePricing';
+import { generateDriverSummaries } from './driverSummaryGenerator';
+import { detectIssues } from './issueDetector';
 
-export type Issue = {
-  orderId: string;
-  driver: string;
-  message: string;
-  details: string;
-  severity: 'warning' | 'error';
-};
-
-export type InvoiceItem = {
-  orderId: string;
-  driver: string;
-  pickup: string;
-  dropoff: string;
-  distance: number;
-  stops: number;
-  routeType: 'single' | 'multi-stop';
-  baseCost: number;
-  addOns: number;
-  totalCost: number;
-};
-
-export type DriverSummary = {
-  name: string;
-  orderCount: number;
-  totalDistance: number;
-  totalEarnings: number;
-};
-
-export type Invoice = {
-  date: string;
-  items: InvoiceItem[];
-  totalDistance: number;
-  totalCost: number;
-  driverSummaries: DriverSummary[];
-};
-
-// Helper function to process orders into routes
-const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): Map<string, DeliveryOrder[]> => {
-  // Group orders by driver and day
-  const routes = new Map<string, DeliveryOrder[]>();
-  
-  orders.forEach(order => {
-    const driver = order.driver || 'Unassigned';
-    
-    // Extract delivery date (or use current date if missing)
-    let deliveryDate = 'unknown-date';
-    
-    if (order.exDeliveryTime) {
-      // Try to extract date from expected delivery time
-      try {
-        const dateObj = new Date(order.exDeliveryTime);
-        deliveryDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
-      } catch (e) {
-        // If parsing fails, use the string directly
-        deliveryDate = order.exDeliveryTime.split(' ')[0]; // Take first part as date
-      }
-    }
-    
-    // Create a route key combining driver and date
-    let routeKey;
-    
-    // For unassigned orders, create a unique route key using the order ID
-    if (driver === 'Unassigned') {
-      routeKey = `${order.id}-unassigned`;
-    } else {
-      // For assigned orders, group by driver and date
-      routeKey = `${driver}-${deliveryDate}`;
-    }
-    
-    // Add order to the appropriate route
-    if (!routes.has(routeKey)) {
-      routes.set(routeKey, []);
-    }
-    
-    routes.get(routeKey)!.push(order);
-  });
-  
-  return routes;
-};
-
-// Calculate the total route distance for multi-stop routes using Mapbox Directions API
-const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder[]): Promise<number> => {
-  // Extract all addresses in order
-  const addresses: string[] = [];
-  
-  // Add all pickup and dropoff locations in sequence
-  routeOrders.forEach(order => {
-    if (order.pickup && !addresses.includes(order.pickup)) {
-      addresses.push(order.pickup);
-    }
-    
-    if (order.dropoff && !addresses.includes(order.dropoff)) {
-      addresses.push(order.dropoff);
-    }
-  });
-  
-  // If we have enough addresses, calculate the route distance
-  if (addresses.length >= 2) {
-    try {
-      const routeDistance = await calculateRouteDistance(addresses);
-      if (routeDistance !== null) {
-        return Number(routeDistance.toFixed(1));
-      }
-    } catch (error) {
-      console.error('Error calculating multi-stop route distance:', error);
-    }
-  }
-  
-  // If API call fails or not enough addresses, sum individual estimated distances
-  return routeOrders.reduce((sum, order) => sum + (order.estimatedDistance || 0), 0);
-};
+// Re-export types and functions for backward compatibility
+export type { Issue, InvoiceItem, DriverSummary, Invoice } from './invoiceTypes';
+export { detectIssues } from './issueDetector';
 
 export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice> => {
   // Format date for invoice 
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
-  // Organize orders into routes by driver and date (unassigned orders get their own routes)
+  // Organize orders into routes by driver and date
   const routes = organizeOrdersIntoRoutes(orders);
   
   // Create invoice items based on routes
   const items: InvoiceItem[] = [];
   
   // Process each route
-  for (const [routeKey, routeOrders] of routes.entries()) {
+  for (const route of routes) {
+    const routeOrders = route.orders;
+    
     // Calculate total route distance using Mapbox Directions API for multi-stop routes
     const totalDistance = routeOrders.length > 1 
       ? await calculateMultiStopRouteDistance(routeOrders)
@@ -137,27 +36,7 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     const stops = routeOrders.length;
     
     // Apply billing logic with correct formulas
-    let baseCost = 0;
-    let addOns = 0;
-    
-    if (routeType === 'single') {
-      // Single-order under 25 miles: flat $25
-      if (totalDistance < 25) {
-        baseCost = 25;
-        addOns = 0;
-      } 
-      // Single-order over 25 miles: $1.10 per mile
-      else {
-        baseCost = totalDistance * 1.10;
-        addOns = 0;
-      }
-    } else {
-      // Multi-stop routes: (total mileage × $1.10) + $12 for each extra stop
-      baseCost = totalDistance * 1.10;
-      addOns = (stops - 1) * 12; // $12 per each extra stop beyond the first
-    }
-    
-    const routeCost = baseCost + addOns;
+    const { baseCost, addOns, totalCost } = calculateInvoiceCosts(routeType, totalDistance, stops);
     
     // Create invoice items for each order in the route
     routeOrders.forEach(order => {
@@ -172,13 +51,13 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
       // For unassigned orders, each is already its own route (single order)
       let itemBaseCost = baseCost;
       let itemAddOns = addOns;
-      let itemTotalCost = routeCost;
+      let itemTotalCost = totalCost;
       
       if (routeType === 'multi-stop' && driver !== 'Unassigned') {
         // Distribute the costs evenly among orders in the route
         itemBaseCost = baseCost / stops;
         itemAddOns = addOns / stops;
-        itemTotalCost = routeCost / stops;
+        itemTotalCost = totalCost / stops;
       }
       
       items.push({
@@ -201,26 +80,7 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
   const totalCost = items.reduce((sum, item) => sum + item.totalCost, 0);
   
   // Generate driver summaries
-  const driverMap = new Map<string, DriverSummary>();
-  
-  items.forEach(item => {
-    const driver = item.driver;
-    if (!driverMap.has(driver)) {
-      driverMap.set(driver, {
-        name: driver,
-        orderCount: 0,
-        totalDistance: 0,
-        totalEarnings: 0
-      });
-    }
-    
-    const summary = driverMap.get(driver)!;
-    summary.orderCount += 1;
-    summary.totalDistance += item.distance;
-    summary.totalEarnings += item.totalCost;
-  });
-  
-  const driverSummaries = Array.from(driverMap.values());
+  const driverSummaries = generateDriverSummaries(items);
   
   return {
     date: formattedDate,
@@ -229,68 +89,4 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     totalCost,
     driverSummaries
   };
-};
-
-export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
-  const issues: Issue[] = [];
-  const driverOrderCounts: Record<string, number> = {};
-  
-  // Count orders per driver
-  orders.forEach(order => {
-    const driver = order.driver || 'Unassigned';
-    driverOrderCounts[driver] = (driverOrderCounts[driver] || 0) + 1;
-  });
-  
-  // Check each order for potential issues - ONE issue per order with missing fields
-  orders.forEach(order => {
-    const driver = order.driver || 'Unassigned';
-    
-    // Filter out 'driver' from missingFields if it's unassigned 
-    // (this is now considered a valid state, not a missing field)
-    const actualMissingFields = order.missingFields.filter(field => 
-      !(field === 'driver' && (order.driver === 'Unassigned' || !order.driver))
-    );
-    
-    // Consolidate missing fields into a single issue
-    if (actualMissingFields.length > 0) {
-      // Format the list of missing fields for human reading
-      const missingFieldsFormatted = actualMissingFields
-        .map(field => {
-          switch(field) {
-            case 'address': return 'delivery address';
-            case 'pickupLocation': return 'pickup location';
-            case 'exReadyTime': return 'expected ready time';
-            case 'exDeliveryTime': return 'expected delivery time';
-            case 'actualPickupTime': return 'actual pickup time';
-            case 'actualDeliveryTime': return 'actual delivery time';
-            case 'items': return 'items';
-            default: return field;
-          }
-        })
-        .join(', ');
-      
-      issues.push({
-        orderId: order.id,
-        driver,
-        message: `Incomplete order data`,
-        details: `Order ${order.id} is missing: ${missingFieldsFormatted}.`,
-        severity: 'warning'
-      });
-    }
-  });
-  
-  // Check for drivers with high load (more than 10 orders)
-  Object.entries(driverOrderCounts).forEach(([driver, count]) => {
-    if (count > 10 && driver !== 'Unassigned') {
-      issues.push({
-        orderId: 'multiple',
-        driver,
-        message: 'High driver load',
-        details: `${driver} has ${count} orders assigned, which may be excessive.`,
-        severity: 'warning'
-      });
-    }
-  });
-  
-  return issues;
 };
