@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -7,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { OrderDetails } from './data-verification/OrderDetails';
 import { VerificationSidebar } from './data-verification/VerificationSidebar';
 import { useOrderVerification } from './data-verification/hooks/useOrderVerification';
+import { markOrdersWithNoiseTrips } from '@/utils/routeOrganizer';
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
@@ -21,6 +23,9 @@ export function DataVerification({
   onOpenChange,
   onOrdersVerified
 }: DataVerificationProps) {
+  // Mark orders with noise trip numbers but don't filter them
+  const initialOrders = markOrdersWithNoiseTrips(orders);
+  
   const {
     ordersWithIssues,
     selectedOrderId,
@@ -38,7 +43,7 @@ export function DataVerification({
     handleOrdersApprove,
     getFieldValidationStatus
   } = useOrderVerification({ 
-    orders, 
+    orders: initialOrders, 
     onOrdersVerified
   });
 

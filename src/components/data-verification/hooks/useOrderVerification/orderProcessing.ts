@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from '@/utils/csvParser';
 import { isEmptyValue, isUnassignedDriver, normalizeFieldValue } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
@@ -51,7 +50,7 @@ export const processOrdersForVerification = (
     .filter(value => 
       value !== null && 
       !isEmptyValue(value) && 
-      !isNoiseOrTestTripNumber(normalizeFieldValue(value))
+      !isNoiseOrTestTripNumber(normalizeFieldValue(value))[0]
     )
     .map(value => normalizeFieldValue(value));
   
@@ -114,19 +113,30 @@ function processTripNumber(order: DeliveryOrder): void {
     normalized: normalizedTripNumber
   });
   
+  // Use the updated isNoiseOrTestTripNumber function that returns a tuple
+  const [isNoise, isMissing] = isNoiseOrTestTripNumber(normalizedTripNumber, order);
+  
   // Check if the trip number is valid
   const isTripNumberEmpty = isEmptyValue(rawTripNumber);
-  const isTripNumberNoise = !isTripNumberEmpty && isNoiseOrTestTripNumber(normalizedTripNumber);
   
   // Store the normalized value if it was not null
   order.tripNumber = normalizedTripNumber;
   
   // Update missing fields based on validation
-  if (isTripNumberEmpty || isTripNumberNoise) {
-    // Trip number is empty or noise - add to missing fields if not already there
+  if (isTripNumberEmpty || isNoise || isMissing) {
+    // Trip number is empty, noise, or missing - add to missing fields if not already there
     if (!order.missingFields.includes('tripNumber')) {
       order.missingFields.push('tripNumber');
-      logDebug(`Added missing field flag: Order ${order.id} has ${isTripNumberEmpty ? 'empty' : 'noise'} Trip Number "${normalizedTripNumber || ''}"`);
+      
+      if (isNoise) {
+        logDebug(`Added missing field flag: Order ${order.id} has noise Trip Number "${normalizedTripNumber || ''}"`);
+        // Also mark the order as having a noise value
+        order.isNoise = true;
+      } else if (isMissing) {
+        logDebug(`Added missing field flag: Order ${order.id} has missing Trip Number "${normalizedTripNumber || ''}"`);
+      } else {
+        logDebug(`Added missing field flag: Order ${order.id} has empty Trip Number "${normalizedTripNumber || ''}"`);
+      }
     }
   } else {
     // Trip number exists and is valid - remove from missing fields if present
@@ -134,6 +144,9 @@ function processTripNumber(order: DeliveryOrder): void {
       order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
       logDebug(`Removed trip number from missing fields for ${order.id}`);
     }
+    
+    // Also ensure isNoise is set to false
+    order.isNoise = false;
   }
 }
 

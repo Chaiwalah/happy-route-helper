@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 import { OrderRoute } from './invoiceTypes';
 
@@ -19,32 +18,75 @@ const safeFormatDate = (dateString: string | undefined): string => {
   return date.toISOString().split('T')[0];
 };
 
-// Check if a trip number is a test/noise value that should be ignored
+// Check if a trip number is a test/noise value that should be identified
 // Make this function exportable for use in issue detection
-export const isNoiseOrTestTripNumber = (tripNumber: string | undefined): boolean => {
-  if (!tripNumber) return false;
+// Now returns a tuple with [isNoise, isMissing] flags
+export const isNoiseOrTestTripNumber = (
+  tripNumber: string | undefined, 
+  order?: DeliveryOrder
+): [boolean, boolean] => {
+  if (!tripNumber) return [false, true]; // Missing trip number
   
   const trimmedValue = tripNumber.trim().toLowerCase();
   
-  // List of known test/noise trip number values to ignore
+  // List of known test/noise trip number values to identify
   const noiseValues = ['24', '25', 'test', 'noise'];
   
   // Check if the trip number is in our noise list
-  if (noiseValues.includes(trimmedValue)) {
+  const isNoise = noiseValues.includes(trimmedValue);
+  if (isNoise) {
     console.log(`Trip number "${tripNumber}" identified as noise value`);
-    return true;
+    
+    // If an order object was provided, mark it as noise
+    if (order) {
+      order.isNoise = true;
+      
+      // Make sure missingFields exists
+      if (!order.missingFields) {
+        order.missingFields = [];
+      }
+      
+      // Add to missing fields if not already there
+      if (!order.missingFields.includes('isNoise')) {
+        order.missingFields.push('isNoise');
+      }
+      
+      // Add tripNumber to missing fields if not already there
+      if (!order.missingFields.includes('tripNumber')) {
+        order.missingFields.push('tripNumber');
+      }
+    }
+    
+    return [true, false]; // It's noise, but not missing
   }
   
-  // N/A values are not noise, they're missing values that need to be fixed in verification
-  // We've changed this - previously 'n/a' was treated as noise
-  if (trimmedValue === 'n/a' || trimmedValue === 'na' || trimmedValue === 'none') {
+  // Check for N/A values - these are missing values that need to be fixed
+  const isMissing = trimmedValue === 'n/a' || 
+                    trimmedValue === 'na' || 
+                    trimmedValue === 'none';
+  
+  if (isMissing) {
     console.log(`Trip number "${tripNumber}" identified as missing (N/A)`);
-    return false; // Changed from true to false - we want to flag these for verification
+    
+    // If an order object was provided, mark it as missing
+    if (order) {
+      // Make sure missingFields exists
+      if (!order.missingFields) {
+        order.missingFields = [];
+      }
+      
+      // Add tripNumber to missing fields if not already there
+      if (!order.missingFields.includes('tripNumber')) {
+        order.missingFields.push('tripNumber');
+      }
+    }
+    
+    return [false, true]; // It's not noise, but it is missing
   }
   
   // Additional checks could be added here for other patterns
   
-  return false;
+  return [false, false]; // Neither noise nor missing
 };
 
 // Check if an order is a pump pickup only order
@@ -74,14 +116,13 @@ const isPumpPickupOnly = (order: DeliveryOrder): boolean => {
 
 // Organize orders into routes by TripNumber, driver, and date
 export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] => {
-  // First, filter out orders with noise/test trip numbers
-  const filteredOrders = orders.filter(order => 
-    !(order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber))
-  );
-  
-  if (orders.length > filteredOrders.length) {
-    console.log(`Filtered out ${orders.length - filteredOrders.length} orders with test/noise trip numbers`);
-  }
+  // Instead of filtering, we'll mark noise orders but keep them in the processing
+  orders.forEach(order => {
+    if (order.tripNumber) {
+      const [isNoise, isMissing] = isNoiseOrTestTripNumber(order.tripNumber, order);
+      // We're not filtering, just marking as noise or missing
+    }
+  });
   
   const routeMap = new Map<string, DeliveryOrder[]>();
   
@@ -92,7 +133,7 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
   
   // Identify pump pickup only orders for special handling
   const regularOrders: DeliveryOrder[] = [];
-  filteredOrders.forEach(order => {
+  orders.forEach(order => {
     if (isPumpPickupOnly(order)) {
       pumpPickupOrders.push(order);
     } else {
@@ -223,7 +264,9 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       // Explicitly identify whether this is a multi-stop route based on regular order count
       isMultiStop: regularStops > 1,
       // Flag if this route contains pump pickup orders
-      hasPumpPickups: routeOrders.some(order => order.isPumpPickup)
+      hasPumpPickups: routeOrders.some(order => order.isPumpPickup),
+      // Added flag for routes with noise trip numbers
+      hasNoiseTrips: routeOrders.some(order => order.isNoise)
     };
   });
   
@@ -254,16 +297,57 @@ export const removeOrdersWithMissingTripNumbers = (orders: DeliveryOrder[]): Del
   return filteredOrders;
 };
 
-// New function to filter out noise/test trip numbers
+// Updated to mark noise trips but not filter them out unless explicitly asked
 export const removeOrdersWithNoiseTrips = (orders: DeliveryOrder[]): DeliveryOrder[] => {
-  const filteredOrders = orders.filter(order => 
-    !(order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber))
-  );
+  // First mark all noise orders for visibility in the UI
+  orders.forEach(order => {
+    if (order.tripNumber) {
+      const [isNoise, isMissing] = isNoiseOrTestTripNumber(order.tripNumber, order);
+    }
+  });
   
-  const removedCount = orders.length - filteredOrders.length;
-  if (removedCount > 0) {
-    console.log(`Removed ${removedCount} orders with noise/test trip numbers`);
+  // Count how many noise orders we have for reporting
+  const noiseOrderCount = orders.filter(order => order.isNoise).length;
+  if (noiseOrderCount > 0) {
+    console.log(`Found ${noiseOrderCount} orders with noise/test trip numbers`);
   }
   
-  return filteredOrders;
+  // Only filter if we're explicitly asked to remove them (for invoice generation)
+  // Otherwise, keep them for verification in the UI
+  const removedOrFilteredFlag = true; // This would be a parameter in a more generic version
+  
+  if (removedOrFilteredFlag) {
+    const filteredOrders = orders.filter(order => !order.isNoise);
+    
+    const removedCount = orders.length - filteredOrders.length;
+    if (removedCount > 0) {
+      console.log(`Removed ${removedCount} orders with noise/test trip numbers`);
+    }
+    
+    return filteredOrders;
+  }
+  
+  // If not filtering, return all orders
+  return orders;
+};
+
+// New function that only marks noise trip numbers but doesn't filter them
+export const markOrdersWithNoiseTrips = (orders: DeliveryOrder[]): DeliveryOrder[] => {
+  // Deep clone to avoid mutating the original array
+  const clonedOrders = JSON.parse(JSON.stringify(orders)) as DeliveryOrder[];
+  
+  // Mark all noise orders
+  clonedOrders.forEach(order => {
+    if (order.tripNumber) {
+      const [isNoise, isMissing] = isNoiseOrTestTripNumber(order.tripNumber, order);
+    }
+  });
+  
+  // Count how many noise orders we have for reporting
+  const noiseOrderCount = clonedOrders.filter(order => order.isNoise).length;
+  if (noiseOrderCount > 0) {
+    console.log(`Found ${noiseOrderCount} orders with noise/test trip numbers that need verification`);
+  }
+  
+  return clonedOrders;
 };

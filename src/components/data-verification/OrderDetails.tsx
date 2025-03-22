@@ -1,7 +1,7 @@
 "use client"
 
 import { DeliveryOrder } from '@/utils/csvParser';
-import { AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { OrderDetailField } from './OrderDetailField';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -95,8 +95,15 @@ export function OrderDetails({
   // Validation checks using our unified validation approach
   const isTripNumberNull = selectedOrder.tripNumber === null;
   const isTripNumberEmpty = !isTripNumberNull && isEmptyValue(selectedOrder.tripNumber);
-  const isTripNumberNoise = !isTripNumberNull && !isTripNumberEmpty && 
-    isNoiseOrTestTripNumber(normalizeFieldValue(selectedOrder.tripNumber));
+  
+  // Use the new tuple return value from isNoiseOrTestTripNumber
+  const [isTripNumberNoise, isTripNumberMissing] = selectedOrder.tripNumber 
+    ? isNoiseOrTestTripNumber(normalizeFieldValue(selectedOrder.tripNumber))
+    : [false, true];
+    
+  // Use the isNoise flag on the order if it exists
+  const isOrderMarkedAsNoise = selectedOrder.isNoise || false;
+  
   const isTripNumberNA = !isTripNumberNull && !isTripNumberEmpty && 
     ['n/a', 'na', 'none'].includes(normalizeFieldValue(selectedOrder.tripNumber).toLowerCase());
   
@@ -116,9 +123,13 @@ export function OrderDetails({
       raw: selectedOrder.tripNumber,
       isNull: isTripNumberNull,
       isEmpty: isTripNumberEmpty,
-      isNoise: isTripNumberNoise,
-      isNA: isTripNumberNA,
-      isMissing: missingFields.includes('tripNumber')
+      isNoise: isTripNumberNoise || isOrderMarkedAsNoise,
+      isMissing: isTripNumberMissing || missingFields.includes('tripNumber'),
+      isNA: isTripNumberNA
+    },
+    order: {
+      isNoise: selectedOrder.isNoise,
+      missingFields: missingFields
     },
     driver: {
       value: driverValue,
@@ -137,6 +148,11 @@ export function OrderDetails({
     <div className="space-y-4">
       <h3 className="text-lg font-medium">
         Order Details: {selectedOrder.id}
+        {isOrderMarkedAsNoise && (
+          <span className="ml-2 text-sm font-normal text-amber-500">
+            (Test/Noise Trip Number)
+          </span>
+        )}
       </h3>
       
       {validationMessage && (
@@ -160,12 +176,14 @@ export function OrderDetails({
                            isTripNumberEmpty || 
                            isTripNumberNA ||
                            missingFields.includes('tripNumber')}
-                  isNoise={isTripNumberNoise}
+                  isNoise={isTripNumberNoise || isOrderMarkedAsNoise}
                   isSaving={isSavingField}
                   suggestedValues={suggestedTripNumbers}
                   validationStatus={getFieldValidationStatus('tripNumber', 
                     editingField === 'tripNumber' ? fieldValue : selectedOrder.tripNumber)}
-                  validationMessage="Trip Numbers are critical for route organization"
+                  validationMessage={isOrderMarkedAsNoise ? 
+                    "This appears to be a test or noise value" :
+                    "Trip Numbers are critical for route organization"}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
                   onSave={onFieldUpdate}

@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings, DriverSummary } from './invoiceTypes';
 import { organizeOrdersIntoRoutes, removeOrdersWithNoiseTrips } from './routeOrganizer';
@@ -31,8 +30,16 @@ export const generateInvoice = async (
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const timestamp = today.toISOString();
   
-  // Remove orders with noise/test trip numbers first
+  // First, check and log how many noise orders we have
+  const noiseOrderCount = orders.filter(order => order.isNoise).length;
+  
+  // Remove orders with noise/test trip numbers for invoice generation
+  // We continue to filter these out for invoice generation, but keep them in the UI
   const cleanedOrders = removeOrdersWithNoiseTrips(orders);
+  
+  if (noiseOrderCount > 0) {
+    console.log(`Invoice generation: Filtered out ${noiseOrderCount} orders with noise/test trip numbers`);
+  }
   
   // Organize orders into routes by TripNumber, driver, and date
   const routes = organizeOrdersIntoRoutes(cleanedOrders);

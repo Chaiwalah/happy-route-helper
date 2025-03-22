@@ -1,4 +1,3 @@
-
 /**
  * Enhanced utilities for validating and normalizing field values
  */
@@ -125,14 +124,15 @@ export const validateField = (
   }
   
   if (fieldName === 'tripNumber' && !isEmptyValue(value)) {
-    // Check for noise/test values
-    if (isNoiseOrTestTripNumber(normalizedValue)) {
+    // Check for noise/test values using the updated tuple return
+    const [isNoise, isMissing] = isNoiseOrTestTripNumber(normalizedValue);
+    
+    if (isNoise) {
       setValidationMessage('Warning: This appears to be a test/noise value');
       return false;
     }
     
-    // Check for N/A values
-    if (['n/a', 'na', 'none', 'null', 'undefined'].includes(normalizedValue.toLowerCase())) {
+    if (isMissing) {
       setValidationMessage('Trip Number cannot be N/A or None');
       return false;
     }

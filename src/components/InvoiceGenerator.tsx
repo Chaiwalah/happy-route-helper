@@ -3,7 +3,7 @@
 
 import { DeliveryOrder } from '@/utils/csvParser';
 import { InvoiceGeneratorMain } from './invoice/InvoiceGeneratorMain';
-import { removeOrdersWithNoiseTrips } from '@/utils/routeOrganizer';
+import { markOrdersWithNoiseTrips, removeOrdersWithNoiseTrips } from '@/utils/routeOrganizer';
 import { toast } from './ui/use-toast';
 import { useEffect, useState } from 'react';
 
@@ -14,20 +14,20 @@ interface InvoiceGeneratorProps {
 export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   const [filteredOrders, setFilteredOrders] = useState<DeliveryOrder[]>(orders);
   
-  // Filter out noise/test trip numbers on component mount
+  // Mark noise orders but don't filter them out until invoice generation
   useEffect(() => {
-    const cleanedOrders = removeOrdersWithNoiseTrips(orders);
+    const markedOrders = markOrdersWithNoiseTrips(orders);
+    const noiseCount = markedOrders.filter(order => order.isNoise).length;
     
-    if (cleanedOrders.length < orders.length) {
-      const removedCount = orders.length - cleanedOrders.length;
+    if (noiseCount > 0) {
       toast({
-        title: "Data Cleaning Complete",
-        description: `${removedCount} orders with test/noise trip numbers have been automatically filtered out.`,
-        variant: "default",
+        title: "Data Verification Required",
+        description: `${noiseCount} orders with test/noise trip numbers have been detected and marked for verification.`,
+        variant: "warning",
       });
     }
     
-    setFilteredOrders(cleanedOrders);
+    setFilteredOrders(markedOrders);
   }, [orders]);
   
   return <InvoiceGeneratorMain orders={filteredOrders} />;
