@@ -19,7 +19,13 @@ export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warni
   }
   
   const tripNumberValue = normalizeFieldValue(order.tripNumber);
-  if (isEmptyValue(order.tripNumber) || isNoiseOrTestTripNumber(tripNumberValue)) {
+  if (isEmptyValue(order.tripNumber)) {
+    return 'error';
+  }
+  
+  // Use the new tuple return from isNoiseOrTestTripNumber
+  const [isNoise] = isNoiseOrTestTripNumber(tripNumberValue);
+  if (isNoise) {
     return 'error';
   }
   
@@ -96,7 +102,8 @@ export const getFieldValidationStatus = (fieldName: string, value: string | null
     }
     
     // Check for noise/test values
-    if (isNoiseOrTestTripNumber(processedValue)) {
+    const [isNoise] = isNoiseOrTestTripNumber(processedValue);
+    if (isNoise) {
       return 'error';
     }
     

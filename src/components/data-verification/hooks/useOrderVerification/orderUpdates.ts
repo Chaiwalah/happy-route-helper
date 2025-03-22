@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from '@/utils/csvParser';
 import { isEmptyValue, isUnassignedDriver, validateField } from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
@@ -50,11 +49,14 @@ export const updateOrder = async (
       // Set the new value
       updatedOrder.tripNumber = value;
       
+      // Check if it's a noise value with the new tuple return
+      const [isNoise, isMissing] = isNoiseOrTestTripNumber(value);
+      updatedOrder.isNoise = isNoise;
+      
       // Update missingFields based on new value
       const isEmpty = isEmptyValue(value);
-      const isNoise = !isEmpty && isNoiseOrTestTripNumber(value);
       
-      if (!isEmpty && !isNoise) {
+      if (!isEmpty && !isNoise && !isMissing) {
         // Valid trip number - remove from missing fields
         updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
         logDebug(`Removed tripNumber from missingFields for ${orderId}`);
@@ -66,7 +68,7 @@ export const updateOrder = async (
         }
       }
       
-      logDebug(`Updated tripNumber: ${previousValue} -> ${value}, isEmpty: ${isEmpty}, isNoise: ${isNoise}`);
+      logDebug(`Updated tripNumber: ${previousValue} -> ${value}, isEmpty: ${isEmpty}, isNoise: ${isNoise}, isMissing: ${isMissing}`);
       
     } else if (fieldName === 'driver') {
       // Store previous value for logging
@@ -92,7 +94,6 @@ export const updateOrder = async (
       }
       
       logDebug(`Updated driver: ${previousValue} -> ${value}, isEmpty: ${isEmpty}, isUnassigned: ${isUnassigned}`);
-      
     } else {
       // For other fields, simply update the value
       (updatedOrder as any)[fieldName] = value;

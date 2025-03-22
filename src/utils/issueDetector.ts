@@ -36,9 +36,11 @@ export const detectIssues = (
   });
   
   // Detect noise/test trip numbers
-  const ordersWithNoiseTrips = orders.filter(order => 
-    order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)
-  );
+  const ordersWithNoiseTrips = orders.filter(order => {
+    if (!order.tripNumber) return false;
+    const [isNoise] = isNoiseOrTestTripNumber(order.tripNumber);
+    return isNoise;
+  });
   
   // Add a global issue if there are orders with noise trip numbers
   if (ordersWithNoiseTrips.length > 0) {
@@ -57,9 +59,9 @@ export const detectIssues = (
     
     // Filter out 'driver' from missingFields if it's unassigned 
     // (this is now considered a valid state, not a missing field)
-    const actualMissingFields = order.missingFields.filter(field => 
+    const actualMissingFields = order.missingFields?.filter(field => 
       !(field === 'driver' && (order.driver === 'Unassigned' || !order.driver))
-    );
+    ) || [];
     
     // Consolidate missing fields into a single issue
     if (actualMissingFields.length > 0) {
@@ -90,7 +92,7 @@ export const detectIssues = (
     }
     
     // Specifically check for empty trip number (not just null but also empty string)
-    if ((!order.tripNumber || order.tripNumber.trim() === '') && !order.missingFields.includes('tripNumber')) {
+    if ((!order.tripNumber || order.tripNumber.trim() === '') && !order.missingFields?.includes('tripNumber')) {
       issues.push({
         orderId: order.id,
         driver,
@@ -101,14 +103,17 @@ export const detectIssues = (
     }
     
     // Flag orders with noise/test trip numbers
-    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
-      issues.push({
-        orderId: order.id,
-        driver,
-        message: 'Test/noise trip number',
-        details: `Order ${order.id} has a test or noise trip number "${order.tripNumber}" and will be excluded from invoice generation.`,
-        severity: 'info'
-      });
+    if (order.tripNumber) {
+      const [isNoise] = isNoiseOrTestTripNumber(order.tripNumber);
+      if (isNoise) {
+        issues.push({
+          orderId: order.id,
+          driver,
+          message: 'Test/noise trip number',
+          details: `Order ${order.id} has a test or noise trip number "${order.tripNumber}" and will be excluded from invoice generation.`,
+          severity: 'info'
+        });
+      }
     }
     
     // Flag orders with tight delivery timeframes
