@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from 'react';
@@ -18,19 +19,14 @@ import PricingInfo from '@/components/invoice/PricingInfo';
 import { InvoiceDetails } from '@/components/invoice/InvoiceDetails';
 import { DriverSummary } from '@/components/invoice/DriverSummary';
 import { IssuesList } from '@/components/invoice/IssuesList';
-import { 
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Slider } from '@/components/ui/slider';
-import { Badge } from '@/components/ui/badge';
-import { Settings, Download, CheckCircle2, FileText, Building, CalendarRange } from 'lucide-react';
 import { InvoiceGenerationSettings } from '@/utils/invoiceTypes';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { enhanceInvoiceItemsWithDetails } from '@/utils/pdfGenerator';
+import { InvoiceSettings } from '@/components/invoice/InvoiceSettings';
+import { InvoiceMetadataDialog } from '@/components/invoice/InvoiceMetadataDialog';
+import { DistanceRecalculationDialog } from '@/components/invoice/DistanceRecalculationDialog';
+import { ExportDialog } from '@/components/invoice/ExportDialog';
+import { InvoiceHeader } from '@/components/invoice/InvoiceHeader';
+import { InvoiceActions } from '@/components/invoice/InvoiceActions';
 
 interface InvoiceGeneratorProps {
   orders: DeliveryOrder[];
@@ -218,94 +214,20 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <PricingInfo />
-          
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" title="Invoice Settings">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <div className="space-y-4">
-                <h4 className="font-medium text-sm">Invoice Generation Settings</h4>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="driver-threshold" className="text-xs">Driver load threshold</Label>
-                    <span className="text-xs font-mono">{settings.flagDriverLoadThreshold} orders</span>
-                  </div>
-                  <Slider 
-                    id="driver-threshold"
-                    min={5}
-                    max={20}
-                    step={1}
-                    value={[settings.flagDriverLoadThreshold]}
-                    onValueChange={(value) => setSettings({ ...settings, flagDriverLoadThreshold: value[0] })}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="distance-threshold" className="text-xs">Distance warning threshold</Label>
-                    <span className="text-xs font-mono">{settings.flagDistanceThreshold} miles</span>
-                  </div>
-                  <Slider 
-                    id="distance-threshold"
-                    min={50}
-                    max={200}
-                    step={10}
-                    value={[settings.flagDistanceThreshold]}
-                    onValueChange={(value) => setSettings({ ...settings, flagDistanceThreshold: value[0] })}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="time-threshold" className="text-xs">Time window threshold</Label>
-                    <span className="text-xs font-mono">{settings.flagTimeWindowThreshold} min</span>
-                  </div>
-                  <Slider 
-                    id="time-threshold"
-                    min={15}
-                    max={60}
-                    step={5}
-                    value={[settings.flagTimeWindowThreshold]}
-                    onValueChange={(value) => setSettings({ ...settings, flagTimeWindowThreshold: value[0] })}
-                  />
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <InvoiceSettings 
+            settings={settings} 
+            onSettingsChange={setSettings} 
+          />
         </div>
         
         <div className="flex space-x-2">
           {invoice && (
-            <>
-              <Button 
-                variant="outline" 
-                onClick={openInvoiceMetadataDialog}
-                className="flex items-center"
-              >
-                <Building className="h-4 w-4 mr-2" />
-                Business Info
-              </Button>
-              <Button 
-                variant="outline" 
-                disabled={invoice.status === 'finalized'} 
-                onClick={handleReviewInvoice}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Review
-              </Button>
-              <Button 
-                variant="outline" 
-                disabled={invoice.status === 'finalized'} 
-                onClick={handleFinalizeInvoice}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Finalize
-              </Button>
-            </>
+            <InvoiceActions 
+              invoice={invoice}
+              onReview={handleReviewInvoice}
+              onFinalize={handleFinalizeInvoice}
+              onBusinessInfoClick={openInvoiceMetadataDialog}
+            />
           )}
           <Button onClick={handleGenerateInvoice} disabled={isGenerating}>
             {isGenerating ? "Calculating Routes..." : "Generate Invoice"}
@@ -315,31 +237,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       
       {invoice && (
         <>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-medium">Invoice {invoice.date}</h3>
-              <Badge variant={
-                invoice.status === 'finalized' ? 'default' : 
-                invoice.status === 'reviewed' ? 'secondary' : 'outline'
-              }>
-                {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-              </Badge>
-              {invoice.recalculatedCount && (
-                <Badge variant="outline" className="text-amber-500 border-amber-500">
-                  {invoice.recalculatedCount} manual adjustment{invoice.recalculatedCount > 1 ? 's' : ''}
-                </Badge>
-              )}
-              {invoice.businessName && (
-                <Badge variant="outline" className="text-blue-500 border-blue-500">
-                  {invoice.businessName}
-                </Badge>
-              )}
-            </div>
-            
-            <div className="text-sm text-muted-foreground">
-              Last modified: {new Date(invoice.lastModified).toLocaleString()}
-            </div>
-          </div>
+          <InvoiceHeader invoice={invoice} />
           
           <Tabs defaultValue="invoice" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
@@ -370,170 +268,28 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
         </>
       )}
       
-      {/* Distance Recalculation Dialog */}
-      <Dialog 
-        open={itemToRecalculate !== null} 
+      {/* Dialogs */}
+      <DistanceRecalculationDialog 
+        open={itemToRecalculate !== null}
         onOpenChange={(open) => !open && setItemToRecalculate(null)}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Adjust Route Distance</DialogTitle>
-          </DialogHeader>
-          
-          {itemToRecalculate && (
-            <div className="space-y-4 py-2">
-              <p className="text-sm text-muted-foreground">
-                Manually adjust the distance for this route. This will recalculate the cost.
-              </p>
-              
-              <div className="flex items-center space-x-4">
-                <Label htmlFor="distance" className="w-24">Distance (mi)</Label>
-                <Input 
-                  id="distance" 
-                  type="number" 
-                  min="0.1" 
-                  step="0.1" 
-                  value={itemToRecalculate.distance} 
-                  onChange={(e) => setItemToRecalculate({
-                    ...itemToRecalculate,
-                    distance: parseFloat(e.target.value) || 0
-                  })}
-                  className="flex-1"
-                />
-              </div>
-              
-              <p className="text-xs text-muted-foreground italic">
-                Original API-calculated distances are based on actual driving routes. Manual adjustments will be flagged in the invoice.
-              </p>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setItemToRecalculate(null)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmRecalculation}>
-              Update Distance
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        itemToRecalculate={itemToRecalculate}
+        onItemToRecalculateChange={setItemToRecalculate}
+        onConfirm={confirmRecalculation}
+      />
       
-      {/* Export Dialog */}
-      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Export Invoice</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Choose export format for the finalized invoice.
-            </p>
-            
-            <div className="grid grid-cols-3 gap-2">
-              <Button onClick={() => handleExport('csv')} variant="outline" className="flex flex-col h-auto py-4">
-                <FileText className="h-6 w-6 mb-1" />
-                <span>CSV</span>
-              </Button>
-              <Button onClick={() => handleExport('excel')} variant="outline" className="flex flex-col h-auto py-4">
-                <svg className="h-6 w-6 mb-1" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M8 13H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M8 17H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <polyline points="10 9 9 9 8 9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                <span>Excel</span>
-              </Button>
-              <Button onClick={() => handleExport('pdf')} variant="outline" className="flex flex-col h-auto py-4">
-                <Download className="h-6 w-6 mb-1" />
-                <span>PDF</span>
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ExportDialog 
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        onExport={handleExport}
+      />
       
-      {/* Invoice Metadata Dialog */}
-      <Dialog open={showMetadataDialog} onOpenChange={setShowMetadataDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Invoice Business Details</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="weekEnding">Week Ending</Label>
-              <Input 
-                id="weekEnding" 
-                type="date" 
-                value={invoiceMetadata.weekEnding} 
-                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, weekEnding: e.target.value})}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="businessName">Business Name</Label>
-              <Input 
-                id="businessName" 
-                value={invoiceMetadata.businessName} 
-                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, businessName: e.target.value})}
-                placeholder="e.g., ABC Pharmacy"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="businessType">Business Type</Label>
-              <div className="flex space-x-2 mt-1">
-                <Button
-                  type="button"
-                  variant={invoiceMetadata.businessType === 'pharmacy' ? 'default' : 'outline'}
-                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'pharmacy'})}
-                  className="flex-1"
-                >
-                  Pharmacy
-                </Button>
-                <Button
-                  type="button"
-                  variant={invoiceMetadata.businessType === 'lab' ? 'default' : 'outline'}
-                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'lab'})}
-                  className="flex-1"
-                >
-                  Lab
-                </Button>
-                <Button
-                  type="button"
-                  variant={invoiceMetadata.businessType === 'hospital' ? 'default' : 'outline'}
-                  onClick={() => setInvoiceMetadata({...invoiceMetadata, businessType: 'hospital'})}
-                  className="flex-1"
-                >
-                  Hospital
-                </Button>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="contactPerson">Contact Person</Label>
-              <Input 
-                id="contactPerson" 
-                value={invoiceMetadata.contactPerson} 
-                onChange={(e) => setInvoiceMetadata({...invoiceMetadata, contactPerson: e.target.value})}
-                placeholder="e.g., John Smith"
-              />
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowMetadataDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={updateInvoiceMetadata}>
-              Update Invoice Details
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <InvoiceMetadataDialog 
+        open={showMetadataDialog}
+        onOpenChange={setShowMetadataDialog}
+        metadata={invoiceMetadata}
+        onMetadataChange={setInvoiceMetadata}
+        onSave={updateInvoiceMetadata}
+      />
     </div>
   );
 }
