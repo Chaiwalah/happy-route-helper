@@ -37,9 +37,13 @@ const Index = () => {
     // Move to orders tab after successful upload
     if (parsedOrders.length > 0) {
       setActiveTab('orders');
+      
+      // Count missing addresses
+      const missingAddresses = parsedOrders.filter(order => order.missingAddress === true).length;
+      
       toast({
         title: "Upload successful",
-        description: `${parsedOrders.length} orders loaded successfully`,
+        description: `${parsedOrders.length} orders loaded successfully. ${missingAddresses > 0 ? `${missingAddresses} with missing address data.` : ''}`,
       });
     }
     
@@ -50,7 +54,7 @@ const Index = () => {
     if (detectedIssues.length > 0) {
       toast({
         description: `${detectedIssues.length} potential issue${detectedIssues.length > 1 ? 's' : ''} detected with your orders`,
-        variant: "destructive",
+        variant: "warning",
       });
     }
   };

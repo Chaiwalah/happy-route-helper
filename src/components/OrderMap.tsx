@@ -157,50 +157,51 @@ const OrderMap = ({ orders }: OrderMapProps) => {
     
     setIsLoading(true);
     mapLocations.current = [];
-    let missingCount = 0;
+    
+    // Count orders with missing addresses
+    const missingCount = orders.filter(order => order.missingAddress === true).length;
+    setMissingAddressCount(missingCount);
     
     try {
-      // Create a batch of promises for all geocoding requests
+      // Create a batch of promises for all geocoding requests - only for orders with addresses
       const geocodePromises = [];
       
-      // Process pickup addresses - adding null checks
+      // Process pickup addresses - only for orders with valid addresses
       for (const order of orders) {
-        if (order.pickup) {
-          geocodePromises.push(
-            geocodeAddress(order.pickup).then(coords => {
-              if (coords) {
-                mapLocations.current.push({
-                  id: order.id || 'unknown',
-                  type: 'pickup',
-                  address: order.pickup,
-                  driver: order.driver || 'Unassigned',
-                  latitude: coords[1],
-                  longitude: coords[0]
-                });
-              }
-            })
-          );
-        } else {
-          missingCount++;
-        }
-        
-        if (order.dropoff) {
-          geocodePromises.push(
-            geocodeAddress(order.dropoff).then(coords => {
-              if (coords) {
-                mapLocations.current.push({
-                  id: order.id || 'unknown',
-                  type: 'dropoff',
-                  address: order.dropoff,
-                  driver: order.driver || 'Unassigned',
-                  latitude: coords[1],
-                  longitude: coords[0]
-                });
-              }
-            })
-          );
-        } else {
-          missingCount++;
+        if (order.missingAddress !== true) {
+          if (order.pickup) {
+            geocodePromises.push(
+              geocodeAddress(order.pickup).then(coords => {
+                if (coords) {
+                  mapLocations.current.push({
+                    id: order.id || 'unknown',
+                    type: 'pickup',
+                    address: order.pickup,
+                    driver: order.driver || 'Unassigned',
+                    latitude: coords[1],
+                    longitude: coords[0]
+                  });
+                }
+              })
+            );
+          }
+          
+          if (order.dropoff) {
+            geocodePromises.push(
+              geocodeAddress(order.dropoff).then(coords => {
+                if (coords) {
+                  mapLocations.current.push({
+                    id: order.id || 'unknown',
+                    type: 'dropoff',
+                    address: order.dropoff,
+                    driver: order.driver || 'Unassigned',
+                    latitude: coords[1],
+                    longitude: coords[0]
+                  });
+                }
+              })
+            );
+          }
         }
       }
       
@@ -210,16 +211,20 @@ const OrderMap = ({ orders }: OrderMapProps) => {
       // Update the map with markers
       updateMapMarkers();
       
-      setMissingAddressCount(missingCount);
-      
       if (missingCount > 0) {
+        const validCount = orders.length - missingCount;
         toast({
-          description: `Geocoded ${mapLocations.current.length} locations. ${missingCount} addresses were missing.`,
+          description: `Geocoded locations for ${validCount} orders. ${missingCount} order${missingCount !== 1 ? 's' : ''} had missing address data.`,
           variant: "warning",
         });
+        
+        // Dev console warning if something is wrong with the count
+        if (missingCount > orders.length) {
+          console.warn(`Warning: Missing address count (${missingCount}) exceeds total order count (${orders.length}). This should never happen.`);
+        }
       } else {
         toast({
-          description: `Geocoded ${mapLocations.current.length} locations`,
+          description: `Geocoded locations for all ${orders.length} orders`,
         });
       }
     } catch (error) {
@@ -413,7 +418,8 @@ const OrderMap = ({ orders }: OrderMapProps) => {
         <div className="flex items-center p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-md">
           <Info className="text-amber-500 mr-2 h-5 w-5" />
           <p className="text-sm text-amber-800 dark:text-amber-400">
-            {missingAddressCount} address{missingAddressCount > 1 ? 'es are' : ' is'} missing. Only orders with valid addresses are shown on the map.
+            {missingAddressCount} order{missingAddressCount !== 1 ? 's' : ''} with missing address data. 
+            Showing {orders.length - missingAddressCount} orders on the map.
           </p>
         </div>
       )}

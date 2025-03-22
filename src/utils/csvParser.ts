@@ -9,6 +9,7 @@ export type DeliveryOrder = {
   items?: string;
   notes?: string;
   estimatedDistance?: number;
+  missingAddress?: boolean; // New flag for tracking missing address
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
@@ -37,6 +38,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // Skip empty lines
       return {
         id: `order-${index + 1}`,
+        missingAddress: true, // Empty lines have no address
       };
     }
     
@@ -45,6 +47,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     // Create object with default values for all fields
     const order: DeliveryOrder = {
       id: `order-${index + 1}`, // Add a default ID
+      missingAddress: true, // Default to true, will set to false if we find address
     };
     
     // First pass: extract all raw values into a row object
@@ -68,6 +71,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     // If we found address components, set the dropoff to the full address
     if (fullAddress.trim() !== "") {
       order.dropoff = fullAddress;
+      order.missingAddress = false; // We have an address, so set to false
     }
     
     // Second pass: map all other fields normally

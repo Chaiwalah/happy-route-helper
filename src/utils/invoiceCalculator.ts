@@ -1,222 +1,62 @@
-
-import { DeliveryOrder } from "./csvParser";
-
-export type InvoiceItem = {
-  orderId: string;
-  driver: string;
-  pickup: string;
-  dropoff: string;
-  distance: number;
-  baseCost: number;
-  addOns: number;
-  totalCost: number;
-  notes?: string;
-};
-
-export type Invoice = {
-  items: InvoiceItem[];
-  totalDistance: number;
-  totalCost: number;
-  driverSummaries: DriverSummary[];
-  date: string;
-};
-
-export type DriverSummary = {
-  name: string;
-  orderCount: number;
-  totalDistance: number;
-  totalEarnings: number;
-};
-
-export const generateInvoice = (
-  orders: DeliveryOrder[], 
-  ratePerMile: number = 1.5, 
-  baseRate: number = 10
-): Invoice => {
-  // Safety check
-  if (!orders || !Array.isArray(orders) || orders.length === 0) {
-    return {
-      items: [],
-      totalDistance: 0,
-      totalCost: 0,
-      driverSummaries: [],
-      date: new Date().toISOString().split('T')[0]
-    };
-  }
-  
-  const invoiceItems: InvoiceItem[] = orders.map(order => {
-    const distance = order.estimatedDistance || 0;
-    const baseCost = baseRate + (distance * ratePerMile);
-    
-    // Simplified - in a real app, add-ons might depend on specific order properties
-    const addOns = calculateAddOns(order);
-    
-    return {
-      orderId: order.id || 'unknown',
-      driver: order.driver || 'Unassigned',
-      pickup: order.pickup || '(No pickup address)',
-      dropoff: order.dropoff || '(No dropoff address)',
-      distance,
-      baseCost: Number(baseCost.toFixed(2)),
-      addOns,
-      totalCost: Number((baseCost + addOns).toFixed(2)),
-      notes: order.notes || ''
-    };
-  });
-  
-  // Calculate driver summaries
-  const driverMap = new Map<string, DriverSummary>();
-  
-  invoiceItems.forEach(item => {
-    const driverName = item.driver || 'Unassigned';
-    
-    if (!driverMap.has(driverName)) {
-      driverMap.set(driverName, {
-        name: driverName,
-        orderCount: 0,
-        totalDistance: 0,
-        totalEarnings: 0
-      });
-    }
-    
-    const driverSummary = driverMap.get(driverName)!;
-    driverSummary.orderCount += 1;
-    driverSummary.totalDistance += item.distance;
-    driverSummary.totalEarnings += item.totalCost;
-    
-    // Update with rounded values
-    driverSummary.totalDistance = Number(driverSummary.totalDistance.toFixed(1));
-    driverSummary.totalEarnings = Number(driverSummary.totalEarnings.toFixed(2));
-  });
-  
-  const totalDistance = invoiceItems.reduce((sum, item) => sum + item.distance, 0);
-  const totalCost = invoiceItems.reduce((sum, item) => sum + item.totalCost, 0);
-  
-  return {
-    items: invoiceItems,
-    totalDistance: Number(totalDistance.toFixed(1)),
-    totalCost: Number(totalCost.toFixed(2)),
-    driverSummaries: Array.from(driverMap.values()),
-    date: new Date().toISOString().split('T')[0]
-  };
-};
-
-// Calculate any add-ons for special circumstances
-const calculateAddOns = (order: DeliveryOrder): number => {
-  let addOns = 0;
-  
-  // Example addon: Long distance fee
-  if (order.estimatedDistance && order.estimatedDistance > 15) {
-    addOns += 5; // $5 long distance fee
-  }
-  
-  // Example addon: After-hours delivery
-  const endTimeHour = extractHour(order.timeWindowEnd);
-  if (endTimeHour && endTimeHour >= 20) { // After 8pm
-    addOns += 7.5; // $7.50 after-hours fee
-  }
-  
-  return addOns;
-};
-
-// Helper to extract hour from time string
-const extractHour = (timeString?: string): number | null => {
-  if (!timeString) return null;
-  
-  // Try to match various time formats
-  const timeRegex = /(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm))?/i;
-  const match = timeString.match(timeRegex);
-  
-  if (!match) return null;
-  
-  let hour = parseInt(match[1], 10);
-  const minutes = match[2] ? parseInt(match[2], 10) : 0;
-  const period = match[3] ? match[3].toLowerCase() : null;
-  
-  // Adjust for 12-hour format
-  if (period === 'pm' && hour < 12) {
-    hour += 12;
-  } else if (period === 'am' && hour === 12) {
-    hour = 0;
-  }
-  
-  return hour;
-};
+import { DeliveryOrder } from './csvParser';
 
 export type Issue = {
-  severity: 'warning' | 'error';
   orderId: string;
   driver: string;
   message: string;
-  details?: string;
+  details: string;
+  severity: 'warning' | 'error';
 };
 
 export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
-  if (!orders || !Array.isArray(orders) || orders.length === 0) {
-    return [];
-  }
-  
   const issues: Issue[] = [];
-  const driversOrderCount = new Map<string, number>();
+  const driverOrderCounts: Record<string, number> = {};
   
   // Count orders per driver
   orders.forEach(order => {
-    const driverName = order.driver || 'Unassigned';
-    driversOrderCount.set(
-      driverName, 
-      (driversOrderCount.get(driverName) || 0) + 1
-    );
+    const driver = order.driver || 'Unassigned';
+    driverOrderCounts[driver] = (driverOrderCounts[driver] || 0) + 1;
   });
   
   // Check each order for potential issues
   orders.forEach(order => {
-    // Get driver name with fallback
-    const driverName = order.driver || 'Unassigned';
-    const orderId = order.id || 'unknown';
+    const driver = order.driver || 'Unassigned';
     
-    // Issue: Driver overloaded with too many orders
-    const orderCount = driversOrderCount.get(driverName) || 0;
-    if (orderCount > 10) {
+    // Missing address issue - only add once per order
+    if (order.missingAddress === true) {
       issues.push({
-        severity: 'warning',
-        orderId,
-        driver: driverName,
-        message: `Driver overloaded with ${orderCount} orders`,
-        details: 'Consider redistributing orders across drivers'
-      });
-    }
-    
-    // Issue: Long distance delivery
-    if (order.estimatedDistance && order.estimatedDistance > 15) {
-      issues.push({
-        severity: 'warning',
-        orderId,
-        driver: driverName,
-        message: `Long distance (${order.estimatedDistance} miles)`,
-        details: 'Long distances may require special handling'
-      });
-    }
-    
-    // Issue: Late delivery window
-    const endTimeHour = extractHour(order.timeWindowEnd);
-    if (endTimeHour && endTimeHour >= 21) { // After 9pm
-      issues.push({
-        severity: 'warning',
-        orderId,
-        driver: driverName,
-        message: 'Late delivery window',
-        details: `End time ${order.timeWindowEnd} may be after pharmacy closing hours`
-      });
-    }
-    
-    // Issue: Missing data - downgrade to warnings as requested
-    if (!order.pickup || !order.dropoff) {
-      issues.push({
-        severity: 'warning', // Changed from 'error' to 'warning'
-        orderId,
-        driver: driverName,
+        orderId: order.id,
+        driver,
         message: 'Missing address data',
-        details: !order.pickup ? 'Pickup address missing' : 'Dropoff address missing'
+        details: `Order ${order.id} is missing complete address information.`,
+        severity: 'warning'
+      });
+    }
+    
+    // Missing time window
+    if (!order.timeWindowStart && !order.timeWindowEnd) {
+      issues.push({
+        orderId: order.id,
+        driver,
+        message: 'Missing time window',
+        details: `No delivery time window specified for order ${order.id}.`,
+        severity: 'warning'
+      });
+    }
+    
+    // Additional issues can be added here but should avoid duplicating same issue type
+    // for the same order
+  });
+  
+  // Check for drivers with high load (more than 10 orders)
+  Object.entries(driverOrderCounts).forEach(([driver, count]) => {
+    if (count > 10 && driver !== 'Unassigned') {
+      issues.push({
+        orderId: 'multiple',
+        driver,
+        message: 'High driver load',
+        details: `${driver} has ${count} orders assigned, which may be excessive.`,
+        severity: 'warning'
       });
     }
   });
