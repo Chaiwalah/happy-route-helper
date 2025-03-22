@@ -10,6 +10,11 @@ import { processOrdersForVerification } from './orderProcessing';
 import { updateOrder, approveOrders } from './orderUpdates';
 import { getOrderValidationStatus, getFieldValidationStatus } from './statusUtils';
 import { validateField } from './validationUtils';
+import {
+  startPerformanceTracking,
+  endPerformanceTracking,
+  logPerformance
+} from '@/utils/performanceLogger';
 
 // Use 'export type' to re-export the type
 export type { FieldValidationStatus } from './types';
@@ -18,6 +23,8 @@ export const useOrderVerification = ({
   orders, 
   onOrdersVerified 
 }: UseOrderVerificationProps): UseOrderVerificationReturn => {
+  startPerformanceTracking('useOrderVerification.init', { orderCount: orders?.length });
+  
   // Initialize state for managing orders with issues
   const [ordersWithIssues, setOrdersWithIssues] = useState<DeliveryOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -31,11 +38,20 @@ export const useOrderVerification = ({
 
   // Process orders and identify issues
   useEffect(() => {
+    startPerformanceTracking('useOrderVerification.processOrders', { orderCount: orders?.length });
+    
     const {
       ordersWithIssues: processedOrdersWithIssues,
       suggestedTripNumbers: processedSuggestedTripNumbers,
       suggestedDrivers: processedSuggestedDrivers
     } = processOrdersForVerification(orders);
+    
+    logPerformance('Order verification processed orders', {
+      totalOrders: orders?.length || 0,
+      ordersWithIssues: processedOrdersWithIssues.length,
+      tripNumberSuggestions: processedSuggestedTripNumbers.length,
+      driverSuggestions: processedSuggestedDrivers.length
+    });
     
     setOrdersWithIssues(processedOrdersWithIssues);
     setSuggestedTripNumbers(processedSuggestedTripNumbers);
@@ -49,32 +65,65 @@ export const useOrderVerification = ({
       // Clear selection if no issues left
       setSelectedOrderId(null);
     }
+    
+    endPerformanceTracking('useOrderVerification.processOrders', {
+      ordersWithIssues: processedOrdersWithIssues.length
+    });
   }, [orders, selectedOrderId]);
 
   // Get the currently selected order
   const selectedOrder = useCallback(() => {
-    if (!selectedOrderId) return null;
-    return ordersWithIssues.find(order => order.id === selectedOrderId) || null;
+    startPerformanceTracking('useOrderVerification.getSelectedOrder');
+    
+    if (!selectedOrderId) {
+      endPerformanceTracking('useOrderVerification.getSelectedOrder', { result: null });
+      return null;
+    }
+    
+    const order = ordersWithIssues.find(order => order.id === selectedOrderId) || null;
+    
+    endPerformanceTracking('useOrderVerification.getSelectedOrder', { 
+      found: !!order,
+      orderId: selectedOrderId
+    });
+    
+    return order;
   }, [ordersWithIssues, selectedOrderId])();
 
   // Handle edit field action
   const handleFieldEdit = useCallback((field: string, value: string) => {
+    startPerformanceTracking('useOrderVerification.handleFieldEdit', { field, valueLength: value?.length });
+    
     setEditingField(field);
     setFieldValue(value || ''); // Ensure value is never undefined
     setValidationMessage(null);
+    
+    endPerformanceTracking('useOrderVerification.handleFieldEdit');
   }, []);
 
   // Handle field value change
   const handleFieldValueChange = useCallback((value: string) => {
+    startPerformanceTracking('useOrderVerification.handleFieldValueChange', { editingField, valueLength: value?.length });
+    
     setFieldValue(value || '');
     
+    // Get the order ID for validation message
+    const orderId = selectedOrderId || 'unknown';
+    
     // Optionally add real-time validation here
-    validateField(editingField || '', value || '', setValidationMessage);
-  }, [editingField]);
+    validateField(editingField || '', value || '', setValidationMessage, orderId);
+    
+    endPerformanceTracking('useOrderVerification.handleFieldValueChange');
+  }, [editingField, selectedOrderId]);
 
   // Handle field update
   const handleFieldUpdate = useCallback(async () => {
     if (!selectedOrderId || editingField === null) return;
+    
+    startPerformanceTracking('useOrderVerification.handleFieldUpdate', { 
+      orderId: selectedOrderId, 
+      field: editingField 
+    });
     
     setIsSavingField(true);
     try {
@@ -100,7 +149,24 @@ export const useOrderVerification = ({
           title: "Field Updated",
           description: `Successfully updated ${editingField} for order ${selectedOrderId}`,
         });
+        
+        endPerformanceTracking('useOrderVerification.handleFieldUpdate', { 
+          success: true,
+          field: editingField
+        });
+      } else {
+        endPerformanceTracking('useOrderVerification.handleFieldUpdate', { 
+          success: false,
+          field: editingField,
+          reason: 'updateOrder returned false'
+        });
       }
+    } catch (error) {
+      endPerformanceTracking('useOrderVerification.handleFieldUpdate', { 
+        success: false,
+        field: editingField,
+        error: error instanceof Error ? error.message : String(error)
+      });
     } finally {
       setIsSavingField(false);
     }
@@ -108,8 +174,16 @@ export const useOrderVerification = ({
 
   // Handle approve action to verify all orders
   const handleOrdersApprove = useCallback(() => {
+    startPerformanceTracking('useOrderVerification.handleOrdersApprove', { 
+      ordersWithIssuesCount: ordersWithIssues.length
+    });
+    
     approveOrders(orders, ordersWithIssues, onOrdersVerified);
+    
+    endPerformanceTracking('useOrderVerification.handleOrdersApprove');
   }, [orders, ordersWithIssues, onOrdersVerified]);
+
+  endPerformanceTracking('useOrderVerification.init');
 
   return {
     ordersWithIssues,
@@ -128,8 +202,10 @@ export const useOrderVerification = ({
     handleOrdersApprove,
     getOrderValidationStatus,
     getFieldValidationStatus,
-    updateOrder: async (orderId: string, fieldName: string, value: string) => 
-      updateOrder(
+    updateOrder: async (orderId: string, fieldName: string, value: string) => {
+      startPerformanceTracking(`useOrderVerification.updateOrder.${orderId}.${fieldName}`, { valueLength: value?.length });
+      
+      const result = await updateOrder(
         orderId, 
         fieldName as keyof DeliveryOrder, 
         value, 
@@ -137,6 +213,11 @@ export const useOrderVerification = ({
         orders, 
         onOrdersVerified,
         setValidationMessage
-      )
+      );
+      
+      endPerformanceTracking(`useOrderVerification.updateOrder.${orderId}.${fieldName}`, { success: result });
+      
+      return result;
+    }
   };
 };

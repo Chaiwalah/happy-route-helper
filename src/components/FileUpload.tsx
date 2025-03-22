@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button';
 import { parseCSV, DeliveryOrder } from '@/utils/csvParser';
 import { calculateDistances } from '@/utils/distanceCalculator';
 import { toast } from '@/components/ui/use-toast';
+import {
+  startPerformanceTracking,
+  endPerformanceTracking,
+  logPerformance,
+  logInfo,
+  logDebug,
+  logError
+} from '@/utils/performanceLogger';
 import { ParsedDataSummary } from '@/utils/invoiceTypes';
 import { AlertCircle, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -116,6 +124,11 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
   };
 
   const handleFile = async (file: File) => {
+    startPerformanceTracking('FileUpload.handleFile', { 
+      fileName: file.name,
+      fileSize: file.size
+    });
+    
     // Check if file is CSV
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
       toast({
@@ -123,6 +136,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
         description: "Please upload a CSV file",
         variant: "destructive",
       });
+      endPerformanceTracking('FileUpload.handleFile', { status: 'invalid-file-type' });
       return;
     }
 
@@ -131,18 +145,28 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
     
     try {
       // Read file content
+      logInfo("Reading CSV file content", { fileName: file.name, fileSize: file.size });
+      startPerformanceTracking('FileUpload.readFileContent');
       const content = await readFileContent(file);
+      endPerformanceTracking('FileUpload.readFileContent', { 
+        contentLength: content.length
+      });
       
       // Parse CSV data with enhanced logging
-      console.log("Starting CSV parsing...");
+      logInfo("Starting CSV parsing...");
+      startPerformanceTracking('FileUpload.parseCSV');
       const parsedData = parseCSV(content);
-      console.log(`Parsed ${parsedData.length} orders from CSV`);
+      endPerformanceTracking('FileUpload.parseCSV', { 
+        ordersCount: parsedData.length 
+      });
+      logInfo(`Parsed ${parsedData.length} orders from CSV`);
       
       if (parsedData.length === 0) {
         throw new Error("No valid data found in CSV file");
       }
       
       // Log trip number data quality
+      startPerformanceTracking('FileUpload.analyzeDataQuality');
       const tripNumberStats = parsedData.reduce((acc, order) => {
         if (order.tripNumber && order.tripNumber.trim() !== '') {
           acc.present++;
@@ -152,28 +176,47 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
         return acc;
       }, { present: 0, missing: 0 });
       
-      console.log(`Trip Number stats - Present: ${tripNumberStats.present}, Missing: ${tripNumberStats.missing}`);
+      logInfo(`Trip Number stats - Present: ${tripNumberStats.present}, Missing: ${tripNumberStats.missing}`);
+      endPerformanceTracking('FileUpload.analyzeDataQuality');
       
       setParsedData(parsedData);
       
       // Generate data summary
+      startPerformanceTracking('FileUpload.createDataSummary');
       const summary = createDataSummary(parsedData);
+      endPerformanceTracking('FileUpload.createDataSummary');
       setDataSummary(summary);
       
       // Process distances
       setProcessingStage('calculating-distances');
+      startPerformanceTracking('FileUpload.calculateDistances');
       const ordersWithDistances = await calculateDistances(parsedData);
+      endPerformanceTracking('FileUpload.calculateDistances', {
+        ordersProcessed: ordersWithDistances.length
+      });
       
       setParsedData(ordersWithDistances);
       
       // Update summary with final data
+      startPerformanceTracking('FileUpload.createFinalSummary');
       const finalSummary = createDataSummary(ordersWithDistances);
+      endPerformanceTracking('FileUpload.createFinalSummary');
       setDataSummary(finalSummary);
       
       // Check if verification is needed (missing trip numbers)
+      startPerformanceTracking('FileUpload.checkVerificationNeeded');
       const needsVerification = ordersWithDistances.some(order => 
         !order.tripNumber || order.missingFields.includes('tripNumber')
       );
+      endPerformanceTracking('FileUpload.checkVerificationNeeded', {
+        needsVerification
+      });
+      
+      logPerformance('CSV processing complete', {
+        ordersProcessed: ordersWithDistances.length,
+        tripNumbersMissing: tripNumberStats.missing,
+        needsVerification
+      });
       
       if (needsVerification) {
         setProcessingStage('verification');
@@ -184,8 +227,14 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
         // Show the summary dialog
         setShowSummaryDialog(true);
       }
+      
+      endPerformanceTracking('FileUpload.handleFile', { 
+        status: 'success',
+        ordersProcessed: ordersWithDistances.length
+      });
     } catch (error) {
       console.error('Error processing file:', error);
+      logError('Error processing file', error instanceof Error ? error.message : String(error));
       toast({
         title: "Error processing file",
         description: error instanceof Error ? error.message : "Unknown error occurred",
@@ -193,10 +242,18 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       });
       setProcessingStage('idle');
       setIsLoading(false);
+      endPerformanceTracking('FileUpload.handleFile', { 
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   };
 
   const handleOrdersVerified = (verifiedOrders: DeliveryOrder[]) => {
+    startPerformanceTracking('FileUpload.handleOrdersVerified', {
+      orderCount: verifiedOrders.length
+    });
+    
     setParsedData(verifiedOrders);
     setProcessingStage('completed');
     
@@ -205,9 +262,17 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
     setDataSummary(updatedSummary);
     setShowVerificationDialog(false);
     setShowSummaryDialog(true);
+    
+    endPerformanceTracking('FileUpload.handleOrdersVerified', {
+      orderCount: verifiedOrders.length
+    });
   };
 
   const handleConfirmData = () => {
+    startPerformanceTracking('FileUpload.handleConfirmData', {
+      orderCount: parsedData.length
+    });
+    
     setShowSummaryDialog(false);
     
     if (parsedData.length > 0) {
@@ -234,9 +299,12 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
     }
     
     setIsLoading(false);
+    endPerformanceTracking('FileUpload.handleConfirmData');
   };
 
   const handleCancelData = () => {
+    startPerformanceTracking('FileUpload.handleCancelData');
+    
     setShowSummaryDialog(false);
     setShowVerificationDialog(false);
     setProcessingStage('idle');
@@ -248,21 +316,38 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       title: "Operation cancelled",
       description: "CSV processing was cancelled",
     });
+    
+    endPerformanceTracking('FileUpload.handleCancelData');
   };
 
   const readFileContent = (file: File): Promise<string> => {
+    startPerformanceTracking('FileUpload.readFileContent', { 
+      fileName: file.name,
+      fileSize: file.size
+    });
+    
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       
       reader.onload = (event) => {
         if (event.target) {
-          resolve(event.target.result as string);
+          const content = event.target.result as string;
+          endPerformanceTracking('FileUpload.readFileContent', { 
+            contentLength: content.length 
+          });
+          resolve(content);
         } else {
+          endPerformanceTracking('FileUpload.readFileContent', { 
+            error: 'No content' 
+          });
           reject(new Error("Failed to read file"));
         }
       };
       
       reader.onerror = () => {
+        endPerformanceTracking('FileUpload.readFileContent', { 
+          error: 'Reader error' 
+        });
         reject(new Error("Error reading file"));
       };
       

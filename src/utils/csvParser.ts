@@ -1,3 +1,13 @@
+import {
+  startPerformanceTracking,
+  endPerformanceTracking,
+  logTripNumberProcessing,
+  logDriverProcessing,
+  logDebug,
+  logInfo,
+  logPerformance
+} from './performanceLogger';
+
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -25,26 +35,40 @@ export type DeliveryOrder = {
  * Enhanced CSV parser with robust trip number and driver handling
  */
 export const parseCSV = (content: string): DeliveryOrder[] => {
+  startPerformanceTracking('parseCSV', { contentLength: content.length });
+  
   // Basic validation of content
   if (!content || content.trim() === '') {
+    endPerformanceTracking('parseCSV', { status: 'empty' });
     return [];
   }
   
+  logInfo('Starting CSV parsing process');
+  
   // Split by new lines and remove empty lines
+  startPerformanceTracking('parseCSV.splitLines');
   const lines = content.split('\n').filter(line => line && line.trim() !== '');
+  endPerformanceTracking('parseCSV.splitLines', { lineCount: lines.length });
   
   if (lines.length === 0) {
+    logInfo('No valid lines found in CSV');
+    endPerformanceTracking('parseCSV', { status: 'no-lines' });
     return [];
   }
   
   // Extract headers from first line
+  startPerformanceTracking('parseCSV.extractHeaders');
   const headers = lines[0].split(',').map(h => h?.trim() || '');
+  endPerformanceTracking('parseCSV.extractHeaders', { headerCount: headers.length });
   
   if (headers.length === 0) {
+    logInfo('No valid headers found in CSV');
+    endPerformanceTracking('parseCSV', { status: 'no-headers' });
     return []; 
   }
   
   // Check which columns exist in the CSV with comprehensive matching
+  startPerformanceTracking('parseCSV.identifyColumns');
   const columnsExist = {
     items: headers.some(header => 
       ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
@@ -80,6 +104,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       ['trip number', 'trip #', 'tripnumber', 'trip', 'route number', 'route #', 'route'].includes(header.toLowerCase())
     )
   };
+  endPerformanceTracking('parseCSV.identifyColumns');
   
   // Log all trip number related headers for debugging
   const tripNumberHeaders = headers.filter(header => 
@@ -87,12 +112,16 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       .includes(header.toLowerCase())
   );
   
-  console.log('Found trip number headers:', tripNumberHeaders);
+  logDebug('Found trip number headers:', tripNumberHeaders);
   
   // Parse each line into an object with enhanced validation
+  startPerformanceTracking('parseCSV.processLines', { lineCount: lines.length - 1 });
   const validOrders = lines.slice(1)
     .map((line, index) => {
+      startPerformanceTracking(`parseCSV.processLine.${index+1}`);
+      
       if (!line || line.trim() === '') {
+        endPerformanceTracking(`parseCSV.processLine.${index+1}`, { status: 'empty-line' });
         return null;
       }
       
@@ -106,14 +135,13 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         }
       });
       
-      // Log trip number values for selected orders
-      if ([16, 21, 22, 23].includes(index)) {
-        const tripNumberValues: Record<string, string> = {};
-        tripNumberHeaders.forEach(header => {
-          tripNumberValues[header] = rawRow[header] || 'N/A';
-        });
-        console.log(`CSV Row ${index + 1} (order-${index + 1}): Trip Number values:`, tripNumberValues);
-      }
+      // Log trip number values for all orders
+      const tripNumberValues: Record<string, string> = {};
+      tripNumberHeaders.forEach(header => {
+        tripNumberValues[header] = rawRow[header] || 'N/A';
+      });
+      
+      logDebug(`CSV Row ${index + 1} (order-${index + 1}): Trip Number values:`, tripNumberValues);
       
       // Check if this is a noise row (all key fields are empty)
       const keyFields = [
@@ -137,6 +165,8 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       
       // If no key data is present, skip this row as noise
       if (!hasKeyData) {
+        logDebug(`CSV Row ${index + 1} (order-${index + 1}): Skipping as noise row (no key data)`);
+        endPerformanceTracking(`parseCSV.processLine.${index+1}`, { status: 'noise-row' });
         return null;
       }
       
@@ -268,33 +298,64 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         missingFields.push('notes');
       }
       
-      // Enhanced Trip Number extraction with unified approach
-      const tripNumberValue = extractTripNumber(rawRow, index);
+      // Enhanced Trip Number extraction with unified approach and detailed logging
+      startPerformanceTracking(`parseCSV.extractTripNumber.${index+1}`);
+      const tripNumberValue = extractTripNumber(rawRow, index, order.id);
+      endPerformanceTracking(`parseCSV.extractTripNumber.${index+1}`, { 
+        value: tripNumberValue,
+        rowIndex: index
+      });
       
       if (tripNumberValue) {
         order.tripNumber = tripNumberValue;
-        // Log for debugging specific orders
-        if ([16, 21, 22, 23].includes(index)) {
-          console.log(`Order ${index + 1} (order-${index + 1}): Found Trip Number "${tripNumberValue}" from column`);
-        }
+        logTripNumberProcessing(
+          order.id, 
+          'CSV-Extraction', 
+          tripNumberValue, 
+          tripNumberValue, 
+          { source: 'extractTripNumber', isValid: true }
+        );
       } else if (columnsExist.tripNumber) {
         // Only add to missingFields if the column exists but no value was found
         // Leave order.tripNumber as undefined to be handled by normalization later
         missingFields.push('tripNumber');
-        if ([16, 21, 22, 23].includes(index)) {
-          console.log(`Order ${index + 1} (order-${index + 1}): No Trip Number found despite column existing`);
-        }
+        logTripNumberProcessing(
+          order.id, 
+          'CSV-Extraction', 
+          null, 
+          null, 
+          { source: 'extractTripNumber', isValid: false, reason: 'Missing despite column existing' }
+        );
       }
       
-      // Enhanced Driver extraction with unified approach
-      const driverValue = extractDriverName(rawRow);
+      // Enhanced Driver extraction with unified approach and detailed logging
+      startPerformanceTracking(`parseCSV.extractDriver.${index+1}`);
+      const driverValue = extractDriverName(rawRow, order.id);
+      endPerformanceTracking(`parseCSV.extractDriver.${index+1}`, { 
+        value: driverValue,
+        rowIndex: index
+      });
       
       if (driverValue) {
         order.driver = driverValue;
+        logDriverProcessing(
+          order.id, 
+          'CSV-Extraction', 
+          driverValue, 
+          driverValue, 
+          { source: 'extractDriverName', isValid: true }
+        );
       } else if (columnsExist.driver) {
         // Only set as undefined (not 'Unassigned') if driver column exists but is empty
         // This allows downstream normalization to handle it consistently
         missingFields.push('driver');
+        logDriverProcessing(
+          order.id, 
+          'CSV-Extraction', 
+          null, 
+          null, 
+          { source: 'extractDriverName', isValid: false, reason: 'Missing despite column existing' }
+        );
       }
       
       // Set the missing fields in the order
@@ -338,22 +399,48 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         }
       }
       
+      endPerformanceTracking(`parseCSV.processLine.${index+1}`, { 
+        orderId: order.id, 
+        missingFields: missingFields.length,
+        hasTripNumber: !!order.tripNumber,
+        hasDriver: !!order.driver
+      });
+      
       return order;
     })
     .filter(Boolean); // Filter out any null values (skipped noise rows)
   
+  endPerformanceTracking('parseCSV.processLines', { 
+    parsedOrders: validOrders.length,
+    skippedLines: lines.length - 1 - validOrders.length
+  });
+  
   // Re-number the order IDs sequentially after filtering
-  return validOrders.map((order, index) => ({
+  const renumberedOrders = validOrders.map((order, index) => ({
     ...order,
     id: `order-${index + 1}`
   }));
+  
+  logPerformance(`CSV parsing complete`, { 
+    totalOrders: renumberedOrders.length,
+    missingTripNumbers: renumberedOrders.filter(o => o.missingFields.includes('tripNumber')).length,
+    missingDrivers: renumberedOrders.filter(o => o.missingFields.includes('driver')).length
+  });
+  
+  endPerformanceTracking('parseCSV', { 
+    totalOrdersProcessed: renumberedOrders.length 
+  });
+  
+  return renumberedOrders;
 };
 
 /**
  * Extract trip number from raw row data with comprehensive matching
  * Now ensures consistent handling of missing trip numbers as null
  */
-function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): string | null {
+function extractTripNumber(rawRow: Record<string, string>, rowIndex: number, orderId: string): string | null {
+  startPerformanceTracking(`extractTripNumber.${orderId}`);
+  
   // All possible trip number field variations
   const tripNumberVariations = [
     "Trip Number", "Trip #", "TripNumber", "Trip", 
@@ -370,18 +457,33 @@ function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): st
     // Skip empty or undefined values
     if (!value || value.trim() === '') continue;
     
-    // Log found trip number for specific test orders
-    if ([16, 21, 22, 23].includes(rowIndex)) {
-      console.log(`Found trip number in "${fieldName}" column for order-${rowIndex+1}: "${value}"`);
-    }
+    logTripNumberProcessing(
+      orderId,
+      'Field-Extraction',
+      { fieldName, value },
+      value.trim(),
+      { found: true, fieldUsed: fieldName }
+    );
+    
+    endPerformanceTracking(`extractTripNumber.${orderId}`, { 
+      success: true, 
+      fieldName 
+    });
     
     return value.trim();
   }
   
-  // Log for specific test orders if no trip number found
-  if ([16, 21, 22, 23].includes(rowIndex)) {
-    console.log(`No trip number found in any column for order-${rowIndex+1}`);
-  }
+  logTripNumberProcessing(
+    orderId,
+    'Field-Extraction',
+    rawRow,
+    null,
+    { found: false, message: 'No trip number found in any column' }
+  );
+  
+  endPerformanceTracking(`extractTripNumber.${orderId}`, { 
+    success: false 
+  });
   
   // Return null to explicitly indicate missing value - NOT an empty string or object
   return null;
@@ -391,7 +493,9 @@ function extractTripNumber(rawRow: Record<string, string>, rowIndex: number): st
  * Extract driver name from raw row data with comprehensive matching
  * Now ensures consistent handling of missing drivers as null
  */
-function extractDriverName(rawRow: Record<string, string>): string | null {
+function extractDriverName(rawRow: Record<string, string>, orderId: string): string | null {
+  startPerformanceTracking(`extractDriverName.${orderId}`);
+  
   // All possible driver field variations
   const driverVariations = [
     "Driver", "Driver Name", "Courier", 
@@ -406,9 +510,34 @@ function extractDriverName(rawRow: Record<string, string>): string | null {
     // Skip empty or undefined values
     if (!value || value.trim() === '') continue;
     
+    logDriverProcessing(
+      orderId,
+      'Field-Extraction',
+      { fieldName, value },
+      value.trim(),
+      { found: true, fieldUsed: fieldName }
+    );
+    
+    endPerformanceTracking(`extractDriverName.${orderId}`, { 
+      success: true, 
+      fieldName 
+    });
+    
     // Important: Return the raw value, do NOT convert to "Unassigned" here
     return value.trim();
   }
+  
+  logDriverProcessing(
+    orderId,
+    'Field-Extraction',
+    rawRow,
+    null,
+    { found: false, message: 'No driver found in any column' }
+  );
+  
+  endPerformanceTracking(`extractDriverName.${orderId}`, { 
+    success: false 
+  });
   
   // Return null to explicitly indicate missing value - NOT "Unassigned"
   return null;

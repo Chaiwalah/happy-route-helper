@@ -8,6 +8,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FieldValidationStatus } from './hooks/useOrderVerification';
 import { normalizeFieldValue, isEmptyValue, isUnassignedDriver } from './hooks/useOrderVerification/validationUtils';
+import {
+  startPerformanceTracking,
+  endPerformanceTracking,
+  logPerformance,
+  logTripNumberProcessing,
+  logDriverProcessing
+} from '@/utils/performanceLogger';
 
 interface OrderDetailsProps {
   selectedOrder: DeliveryOrder | null;
@@ -38,9 +45,14 @@ export function OrderDetails({
   suggestedDrivers,
   getFieldValidationStatus
 }: OrderDetailsProps) {
+  startPerformanceTracking('OrderDetails.render', { 
+    hasSelectedOrder: !!selectedOrder,
+    orderId: selectedOrder?.id || 'none'
+  });
+  
   // Display a message if no order is selected
   if (!selectedOrder) {
-    return (
+    const result = (
       <div className="flex flex-col items-center justify-center h-full text-center py-10">
         <div className="text-muted-foreground mb-2">
           Select an order from the list to view and edit its details
@@ -59,8 +71,14 @@ export function OrderDetails({
         )}
       </div>
     );
+    
+    endPerformanceTracking('OrderDetails.render', { result: 'no-order-selected' });
+    return result;
   }
 
+  // Measure processing of values
+  startPerformanceTracking('OrderDetails.processValues', { orderId: selectedOrder.id });
+  
   // Safely extract and process field values, properly handling null values
   // For nulls, we'll display "Missing" in the UI but keep them as null in the data
   
@@ -92,6 +110,11 @@ export function OrderDetails({
     ? "Missing" 
     : normalizeFieldValue(selectedOrder.exDeliveryTime);
   
+  endPerformanceTracking('OrderDetails.processValues', { orderId: selectedOrder.id });
+  
+  // Validation checks - measure performance
+  startPerformanceTracking('OrderDetails.validateFields', { orderId: selectedOrder.id });
+  
   // Validation checks using our unified validation approach
   const isTripNumberNull = selectedOrder.tripNumber === null;
   const isTripNumberEmpty = !isTripNumberNull && isEmptyValue(selectedOrder.tripNumber);
@@ -116,35 +139,76 @@ export function OrderDetails({
   // Safe access to missingFields with default empty array
   const missingFields = selectedOrder.missingFields || [];
   
+  endPerformanceTracking('OrderDetails.validateFields', { 
+    isTripNumberNull,
+    isTripNumberEmpty,
+    isTripNumberNoise,
+    isTripNumberMissing,
+    isTripNumberNA,
+    isDriverNull,
+    isDriverEmpty,
+    isDriverUnassigned,
+    missingFieldsCount: missingFields.length
+  });
+  
+  // Log trip number and driver validation for this render
+  logTripNumberProcessing(
+    selectedOrder.id,
+    'UI-Render',
+    selectedOrder.tripNumber,
+    tripNumberValue,
+    {
+      isTripNumberNull,
+      isTripNumberEmpty,
+      isTripNumberNoise,
+      isTripNumberMissing,
+      isTripNumberNA,
+      isOrderMarkedAsNoise,
+      inMissingFields: missingFields.includes('tripNumber')
+    }
+  );
+  
+  logDriverProcessing(
+    selectedOrder.id,
+    'UI-Render',
+    selectedOrder.driver,
+    driverValue,
+    {
+      isDriverNull,
+      isDriverEmpty,
+      isDriverUnassigned,
+      inMissingFields: missingFields.includes('driver')
+    }
+  );
+  
   // Enhanced debug information with structured data
-  console.log(`OrderDetails rendering for ${selectedOrder.id}:`, {
+  logPerformance(`OrderDetails rendered for ${selectedOrder.id}`, {
     tripNumber: {
       value: tripNumberValue,
-      raw: selectedOrder.tripNumber,
       isNull: isTripNumberNull,
       isEmpty: isTripNumberEmpty,
       isNoise: isTripNumberNoise || isOrderMarkedAsNoise,
       isMissing: isTripNumberMissing || missingFields.includes('tripNumber'),
       isNA: isTripNumberNA
     },
-    order: {
-      isNoise: selectedOrder.isNoise,
-      missingFields: missingFields
-    },
     driver: {
       value: driverValue,
-      raw: selectedOrder.driver,
       isNull: isDriverNull,
       isEmpty: isDriverEmpty,
       isUnassigned: isDriverUnassigned,
       isMissing: missingFields.includes('driver')
     },
-    editingField: editingField || 'NONE',
-    fieldValue: fieldValue || 'EMPTY',
-    missingFields: missingFields
+    validationState: {
+      editingField: editingField || 'NONE',
+      fieldValue: fieldValue || 'EMPTY',
+      missingFields
+    }
   });
   
-  return (
+  // Create the UI elements
+  startPerformanceTracking('OrderDetails.createUI', { orderId: selectedOrder.id });
+  
+  const result = (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">
         Order Details: {selectedOrder.id}
@@ -317,4 +381,9 @@ export function OrderDetails({
       </div>
     </div>
   );
+  
+  endPerformanceTracking('OrderDetails.createUI', { orderId: selectedOrder.id });
+  endPerformanceTracking('OrderDetails.render', { orderId: selectedOrder.id });
+  
+  return result;
 }
