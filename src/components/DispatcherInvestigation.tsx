@@ -1,3 +1,4 @@
+"use client"
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -16,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { optimizeRoutes, getMockDriverSchedules, OptimizationResult } from '@/utils/timeAnalyzer';
-import { enhanceOrdersWithTimeData } from '@/utils/dispatchTypes';
+import { enhanceOrdersWithTimeData, ExtendedDeliveryOrder } from '@/utils/dispatchTypes';
 import { 
   Clock, 
   AlertTriangle, 
@@ -37,7 +38,7 @@ interface DispatcherInvestigationProps {
 }
 
 export function DispatcherInvestigation({ orders }: DispatcherInvestigationProps) {
-  const [enhancedOrders, setEnhancedOrders] = useState<DeliveryOrder[]>([]);
+  const [enhancedOrders, setEnhancedOrders] = useState<ExtendedDeliveryOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
@@ -53,7 +54,7 @@ export function DispatcherInvestigation({ orders }: DispatcherInvestigationProps
   }, [orders]);
 
   const groupOrdersByDate = () => {
-    const groups: Record<string, DeliveryOrder[]> = {};
+    const groups: Record<string, ExtendedDeliveryOrder[]> = {};
     
     enhancedOrders.forEach(order => {
       if (order.createdAt) {

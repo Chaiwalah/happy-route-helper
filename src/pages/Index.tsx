@@ -1,3 +1,6 @@
+
+"use client"
+
 import { useState } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue, detectIssues } from '@/utils/invoiceCalculator';
