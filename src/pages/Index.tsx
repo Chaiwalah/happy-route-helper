@@ -1,25 +1,31 @@
+
 "use client"
 
 import { useState } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
-import { Issue, detectIssues } from '@/utils/invoiceCalculator';
+import { Issue, InvoiceGenerationSettings } from '@/utils/invoiceTypes';
+import { detectIssues } from '@/utils/issueDetector';
 import { FileUpload } from '@/components/FileUpload';
 import { DataTable } from '@/components/DataTable';
 import { InvoiceGenerator } from '@/components/InvoiceGenerator';
 import { IssueFlagging } from '@/components/IssueFlagging';
 import OrderMap from '@/components/OrderMap';
 import { DispatcherInvestigation } from '@/components/DispatcherInvestigation';
+import { DataVerification } from '@/components/DataVerification';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { AlertCircle } from 'lucide-react';
 
 const Index = () => {
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('upload');
+  const [showDataVerification, setShowDataVerification] = useState(false);
 
   const handleDataParsed = (parsedOrders: DeliveryOrder[]) => {
     if (parsedOrders.length === 0) {
@@ -37,14 +43,16 @@ const Index = () => {
     if (parsedOrders.length > 0) {
       setActiveTab('orders');
       
-      // Count orders with missing fields
+      // Count orders with missing fields and trip numbers
       const ordersWithMissingFields = parsedOrders.filter(order => order.missingFields.length > 0).length;
-      const ordersWithMissingAddresses = parsedOrders.filter(order => order.missingFields.includes('address')).length;
+      const ordersWithMissingTripNumbers = parsedOrders.filter(order => !order.tripNumber || order.tripNumber.trim() === '').length;
       
       toast({
         title: "Upload successful",
         description: `${parsedOrders.length} orders loaded successfully. ${
           ordersWithMissingFields > 0 ? `${ordersWithMissingFields} with incomplete data.` : ''
+        } ${
+          ordersWithMissingTripNumbers > 0 ? `${ordersWithMissingTripNumbers} missing trip numbers.` : ''
         }`,
       });
     }
@@ -52,12 +60,6 @@ const Index = () => {
     // Check for potential issues
     const detectedIssues = detectIssues(parsedOrders);
     setIssues(detectedIssues);
-    
-    // Validate that issue count doesn't exceed order count
-    const missingDataIssues = detectedIssues.filter(issue => issue.message === 'Incomplete order data');
-    if (missingDataIssues.length > parsedOrders.length) {
-      console.error("Error: More missing data issues than total orders. This should not happen.");
-    }
     
     if (detectedIssues.length > 0) {
       toast({
@@ -86,6 +88,10 @@ const Index = () => {
     }
     
     setActiveTab(value);
+  };
+
+  const openDataVerification = () => {
+    setShowDataVerification(true);
   };
 
   return (
@@ -197,6 +203,11 @@ const Index = () => {
                       <td className="py-2 px-3 font-mono">456 Oak Ave, City</td>
                     </tr>
                     <tr className="border-b">
+                      <td className="py-2 px-3 font-mono text-primary font-medium">tripNumber</td>
+                      <td className="py-2 px-3">Unique route identifier</td>
+                      <td className="py-2 px-3 font-mono">TR-123456</td>
+                    </tr>
+                    <tr className="border-b">
                       <td className="py-2 px-3 font-mono">timeWindowStart</td>
                       <td className="py-2 px-3">Delivery start time</td>
                       <td className="py-2 px-3 font-mono">9:00 AM</td>
@@ -223,11 +234,24 @@ const Index = () => {
           </TabsContent>
           
           <TabsContent value="orders" className="space-y-6">
-            <div className="space-y-1">
-              <h2 className="text-2xl font-semibold tracking-tight">Review Orders</h2>
-              <p className="text-muted-foreground">
-                Review and edit order details before generating invoices
-              </p>
+            <div className="space-y-1 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">Review Orders</h2>
+                <p className="text-muted-foreground">
+                  Review and edit order details before generating invoices
+                </p>
+              </div>
+              
+              {orders.length > 0 && (
+                <Button 
+                  onClick={openDataVerification}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Verify Trip Numbers</span>
+                </Button>
+              )}
             </div>
             
             <ScrollArea className="h-[calc(100vh-220px)]">
@@ -274,6 +298,14 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </main>
+      
+      {/* Data Verification Dialog for Manual Corrections */}
+      <DataVerification 
+        orders={orders}
+        open={showDataVerification}
+        onOpenChange={setShowDataVerification}
+        onOrdersVerified={handleOrdersUpdated}
+      />
       
       <footer className="border-t py-6 md:py-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row">

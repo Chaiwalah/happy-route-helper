@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -9,6 +8,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ParsedDataSummary } from '@/utils/invoiceTypes';
 import { AlertCircle, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DataVerification } from '@/components/DataVerification';
 
 interface FileUploadProps {
   onDataParsed: (orders: DeliveryOrder[]) => void;
@@ -21,7 +21,8 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
   const [parsedData, setParsedData] = useState<DeliveryOrder[]>([]);
   const [dataSummary, setDataSummary] = useState<ParsedDataSummary | null>(null);
   const [showSummaryDialog, setShowSummaryDialog] = useState(false);
-  const [processingStage, setProcessingStage] = useState<'idle' | 'parsing' | 'calculating-distances' | 'completed'>('idle');
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [processingStage, setProcessingStage] = useState<'idle' | 'parsing' | 'calculating-distances' | 'verification' | 'completed'>('idle');
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -84,7 +85,12 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       (!o.pickup || o.pickup.trim() === '') || 
       (!o.dropoff || o.dropoff.trim() === '')
     ).length;
-
+    
+    // Enhanced to include Trip Number quality metrics
+    const ordersWithTripNumbers = orders.filter(o => o.tripNumber && o.tripNumber.trim() !== '').length;
+    const ordersWithoutTripNumbers = orders.filter(o => !o.tripNumber || o.tripNumber.trim() === '').length;
+    
+    // Create the summary with added trip number metrics
     return {
       totalOrders: orders.length,
       missingFields: {
@@ -97,7 +103,9 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       },
       routeNumbers: {
         count: uniqueTripNumbers.length,
-        multiStopRoutes: multiStopRouteCount
+        multiStopRoutes: multiStopRouteCount,
+        ordersWithTripNumbers,
+        ordersWithoutTripNumbers
       },
       addressQuality: {
         validPickupAddresses,
@@ -125,12 +133,26 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Read file content
       const content = await readFileContent(file);
       
-      // Parse CSV data
+      // Parse CSV data with enhanced logging
+      console.log("Starting CSV parsing...");
       const parsedData = parseCSV(content);
+      console.log(`Parsed ${parsedData.length} orders from CSV`);
       
       if (parsedData.length === 0) {
         throw new Error("No valid data found in CSV file");
       }
+      
+      // Log trip number data quality
+      const tripNumberStats = parsedData.reduce((acc, order) => {
+        if (order.tripNumber && order.tripNumber.trim() !== '') {
+          acc.present++;
+        } else {
+          acc.missing++;
+        }
+        return acc;
+      }, { present: 0, missing: 0 });
+      
+      console.log(`Trip Number stats - Present: ${tripNumberStats.present}, Missing: ${tripNumberStats.missing}`);
       
       setParsedData(parsedData);
       
@@ -147,10 +169,21 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Update summary with final data
       const finalSummary = createDataSummary(ordersWithDistances);
       setDataSummary(finalSummary);
-      setProcessingStage('completed');
       
-      // Show the summary dialog
-      setShowSummaryDialog(true);
+      // Check if verification is needed (missing trip numbers)
+      const needsVerification = ordersWithDistances.some(order => 
+        !order.tripNumber || order.missingFields.includes('tripNumber')
+      );
+      
+      if (needsVerification) {
+        setProcessingStage('verification');
+        // Show the verification dialog instead of summary
+        setShowVerificationDialog(true);
+      } else {
+        setProcessingStage('completed');
+        // Show the summary dialog
+        setShowSummaryDialog(true);
+      }
     } catch (error) {
       console.error('Error processing file:', error);
       toast({
@@ -163,6 +196,17 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
     }
   };
 
+  const handleOrdersVerified = (verifiedOrders: DeliveryOrder[]) => {
+    setParsedData(verifiedOrders);
+    setProcessingStage('completed');
+    
+    // After verification, show the summary dialog
+    const updatedSummary = createDataSummary(verifiedOrders);
+    setDataSummary(updatedSummary);
+    setShowVerificationDialog(false);
+    setShowSummaryDialog(true);
+  };
+
   const handleConfirmData = () => {
     setShowSummaryDialog(false);
     
@@ -170,10 +214,17 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       // Send data to parent component
       onDataParsed(parsedData);
       
-      // Create a more specific description about missing fields
+      // Create a more specific description about data quality
       let description = `Processed ${parsedData.length} orders successfully`;
-      if (dataSummary && dataSummary.missingFields.count > 0) {
-        description += `, ${dataSummary.missingFields.count} with incomplete data`;
+      
+      if (dataSummary) {
+        if (dataSummary.missingFields.count > 0) {
+          description += `, ${dataSummary.missingFields.count} with incomplete data`;
+        }
+        
+        if (dataSummary.routeNumbers.ordersWithoutTripNumbers > 0) {
+          description += `, ${dataSummary.routeNumbers.ordersWithoutTripNumbers} without trip numbers`;
+        }
       }
       
       toast({
@@ -187,6 +238,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
 
   const handleCancelData = () => {
     setShowSummaryDialog(false);
+    setShowVerificationDialog(false);
     setProcessingStage('idle');
     setIsLoading(false);
     setParsedData([]);
@@ -245,7 +297,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
             {processingStage === 'idle' && (
               <FileText className="h-6 w-6 text-primary" />
             )}
-            {processingStage === 'parsing' && (
+            {(processingStage === 'parsing' || processingStage === 'calculating-distances') && (
               <div className="animate-spin">
                 <svg 
                   xmlns="http://www.w3.org/2000/svg" 
@@ -263,23 +315,8 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
                 </svg>
               </div>
             )}
-            {processingStage === 'calculating-distances' && (
-              <div className="animate-spin">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  className="h-6 w-6 text-primary" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor" 
-                  strokeWidth={2}
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                  />
-                </svg>
-              </div>
+            {processingStage === 'verification' && (
+              <AlertCircle className="h-6 w-6 text-orange-500" />
             )}
             {processingStage === 'completed' && (
               <CheckCircle2 className="h-6 w-6 text-green-500" />
@@ -291,12 +328,14 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
               {processingStage === 'idle' && "Upload your CSV file"}
               {processingStage === 'parsing' && "Parsing CSV data..."}
               {processingStage === 'calculating-distances' && "Calculating distances..."}
+              {processingStage === 'verification' && "Data verification required"}
               {processingStage === 'completed' && "Processing complete"}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {processingStage === 'idle' && "Drag and drop or click to browse"}
               {processingStage === 'parsing' && "Analyzing CSV structure..."}
               {processingStage === 'calculating-distances' && "Validating addresses and routes..."}
+              {processingStage === 'verification' && "Some trip numbers or data fields need verification"}
               {processingStage === 'completed' && "Data ready for review"}
             </p>
           </div>
@@ -333,6 +372,14 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
           </div>
         </div>
       </div>
+
+      {/* Data Verification Dialog */}
+      <DataVerification
+        orders={parsedData}
+        open={showVerificationDialog}
+        onOpenChange={setShowVerificationDialog}
+        onOrdersVerified={handleOrdersVerified}
+      />
 
       {/* Data Summary Dialog */}
       <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
@@ -377,6 +424,13 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
                       {' '}{dataSummary.addressQuality.validDropoffAddresses}/{dataSummary.totalOrders}
                     </span>
                   </p>
+                  <p className="text-sm">Orders with Trip Numbers: 
+                    <span className={`font-medium ${
+                      dataSummary.routeNumbers.ordersWithoutTripNumbers > 0 ? 'text-orange-500' : 'text-green-500'
+                    }`}>
+                      {' '}{dataSummary.routeNumbers.ordersWithTripNumbers}/{dataSummary.totalOrders}
+                    </span>
+                  </p>
                 </div>
               </div>
               
@@ -401,6 +455,26 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
                       </p>
                     ))}
                   </div>
+                </div>
+              )}
+              
+              {/* Trip Number Issues */}
+              {dataSummary.routeNumbers.ordersWithoutTripNumbers > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg">
+                  <h4 className="font-medium mb-2 flex items-center text-blue-700 dark:text-blue-400">
+                    <AlertCircle className="mr-2 h-4 w-4" />
+                    Trip Number Analysis
+                  </h4>
+                  <p className="text-sm mb-2">
+                    {dataSummary.routeNumbers.ordersWithoutTripNumbers} orders are missing trip numbers.
+                    Trip numbers are critical for accurate route planning and invoice generation.
+                  </p>
+                  {dataSummary.routeNumbers.count > 0 && (
+                    <p className="text-sm">
+                      Found {dataSummary.routeNumbers.count} unique trip numbers across {dataSummary.routeNumbers.ordersWithTripNumbers} orders.
+                      {dataSummary.routeNumbers.multiStopRoutes > 0 && ` Including ${dataSummary.routeNumbers.multiStopRoutes} multi-stop routes.`}
+                    </p>
+                  )}
                 </div>
               )}
               

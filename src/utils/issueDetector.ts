@@ -57,6 +57,7 @@ export const detectIssues = (
             case 'actualPickupTime': return 'actual pickup time';
             case 'actualDeliveryTime': return 'actual delivery time';
             case 'items': return 'items';
+            case 'tripNumber': return 'trip number';
             default: return field;
           }
         })
@@ -71,7 +72,16 @@ export const detectIssues = (
       });
     }
     
-    // Remove distance-based flagging
+    // Specifically check for trip number issues
+    if (!order.tripNumber && !order.missingFields.includes('tripNumber')) {
+      issues.push({
+        orderId: order.id,
+        driver,
+        message: 'Missing trip number',
+        details: `Order ${order.id} has no trip number assigned, which may affect route organization and invoice generation.`,
+        severity: 'warning'
+      });
+    }
     
     // Flag orders with tight delivery timeframes
     if (order.exReadyTime && order.exDeliveryTime) {
@@ -134,6 +144,29 @@ export const detectIssues = (
         message: 'Route has many stops',
         details: `Trip #${tripNumber} has ${tripOrders.length} stops, which may impact efficiency and delivery times.`,
         severity: 'warning'
+      });
+    }
+  });
+  
+  // Identify conflicting trip numbers (same trip number but different drivers)
+  const tripDrivers: Record<string, Set<string>> = {};
+  orders.forEach(order => {
+    if (order.tripNumber) {
+      if (!tripDrivers[order.tripNumber]) {
+        tripDrivers[order.tripNumber] = new Set();
+      }
+      tripDrivers[order.tripNumber].add(order.driver || 'Unassigned');
+    }
+  });
+  
+  Object.entries(tripDrivers).forEach(([tripNumber, drivers]) => {
+    if (drivers.size > 1) {
+      issues.push({
+        orderId: 'multiple',
+        driver: Array.from(drivers).join(', '),
+        message: 'Conflicting trip assignment',
+        details: `Trip #${tripNumber} is assigned to multiple drivers: ${Array.from(drivers).join(', ')}. This may indicate a data error.`,
+        severity: 'error'
       });
     }
   });
