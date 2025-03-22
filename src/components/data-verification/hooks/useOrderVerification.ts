@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useCallback } from 'react';
@@ -48,6 +49,12 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
 
   // Process orders and identify issues
   useEffect(() => {
+    if (!orders || orders.length === 0) {
+      console.log("No orders to process for verification");
+      setOrdersWithIssues([]);
+      return;
+    }
+    
     // Deep clone orders to avoid mutating original array
     const processedOrders = orders.map(order => ({...order}));
     
@@ -58,7 +65,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       // First, ensure we handle trip number validation correctly
       if (order.tripNumber && order.tripNumber.trim() !== '') {
         // If trip number exists and is flagged as missing (false positive), fix it
-        if (order.missingFields.includes('tripNumber')) {
+        if (order.missingFields && order.missingFields.includes('tripNumber')) {
           // This fixes the case where trip number exists but was marked as missing
           order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
           console.log(`Fixed false positive: Order ${order.id} has Trip Number "${order.tripNumber}" but was incorrectly marked as missing`);
@@ -68,10 +75,15 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       // Similar check for driver - preserve actual driver values
       if (order.driver && order.driver.trim() !== '' && 
           order.driver !== 'Unassigned' &&
-          order.missingFields.includes('driver')) {
+          order.missingFields && order.missingFields.includes('driver')) {
         // If we have a non-empty driver but it's flagged as missing, remove it from missingFields
         order.missingFields = order.missingFields.filter(field => field !== 'driver');
         console.log(`Fixed false positive: Order ${order.id} has Driver "${order.driver}" but was incorrectly marked as missing`);
+      }
+      
+      // Ensure missingFields exists
+      if (!order.missingFields) {
+        order.missingFields = [];
       }
       
       // Additional check for "N/A" as a trip number - mark as missing or noise
@@ -125,32 +137,38 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     setSuggestedTripNumbers([...new Set(allTripNumbers)].sort());
     setSuggestedDrivers([...new Set(allDrivers)].sort());
     
-    console.log(`DataVerification: Orders updated, count: ${processedOrders.length}`);
+    console.log(`DataVerification: Orders updated, count: ${processedOrders.length}, issues: ${ordersWithTripNumberIssues.length}`);
     
     setOrdersWithIssues(ordersWithTripNumberIssues);
     
     // If there are issues and no order is selected, select the first one
     if (ordersWithTripNumberIssues.length > 0 && !selectedOrderId) {
       setSelectedOrderId(ordersWithTripNumberIssues[0].id);
+    } else if (ordersWithTripNumberIssues.length === 0) {
+      // Clear selection if no issues left
+      setSelectedOrderId(null);
     }
   }, [orders, selectedOrderId]);
 
   // Get the currently selected order
-  const selectedOrder = ordersWithIssues.find(order => order.id === selectedOrderId) || null;
+  const selectedOrder = useCallback(() => {
+    if (!selectedOrderId) return null;
+    return ordersWithIssues.find(order => order.id === selectedOrderId) || null;
+  }, [ordersWithIssues, selectedOrderId])();
 
   // Handle edit field action
   const handleFieldEdit = (field: string, value: string) => {
     setEditingField(field);
-    setFieldValue(value);
+    setFieldValue(value || ''); // Ensure value is never undefined
     setValidationMessage(null);
   };
 
   // Handle field value change
   const handleFieldValueChange = (value: string) => {
-    setFieldValue(value);
+    setFieldValue(value || '');
     
     // Optionally add real-time validation here
-    validateField(editingField || '', value);
+    validateField(editingField || '', value || '');
   };
 
   // Validate field based on field name and value
@@ -210,6 +228,11 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       const updatedOrders = [...ordersWithIssues];
       const updatedOrder = { ...updatedOrders[orderIndex] };
       
+      // Ensure missingFields exists
+      if (!updatedOrder.missingFields) {
+        updatedOrder.missingFields = [];
+      }
+      
       // Update the field
       if (fieldName === 'tripNumber') {
         updatedOrder.tripNumber = value;
@@ -251,6 +274,14 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       updatedOrders[orderIndex] = updatedOrder;
       setOrdersWithIssues(updatedOrders);
       
+      // Update the same order in the original orders array for consistency
+      const allOrdersUpdated = orders.map(order => 
+        order.id === updatedOrder.id ? updatedOrder : order
+      );
+      
+      // Log the update for debugging
+      console.log(`Updated ${fieldName} for order ${orderId} to "${value}"`);
+      
       // Show success message
       setValidationMessage('Field updated successfully');
       return true;
@@ -286,12 +317,12 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     if (!order.tripNumber || 
         order.tripNumber.trim() === '' || 
         isNoiseOrTestTripNumber(order.tripNumber) ||
-        ['n/a', 'na', 'none'].includes(order.tripNumber.toLowerCase())) {
+        ['n/a', 'na', 'none'].includes(order.tripNumber?.toLowerCase() || '')) {
       return 'error';
     }
     
     // Check for other missing fields - less critical
-    if (order.missingFields.length > 0) {
+    if (order.missingFields && order.missingFields.length > 0) {
       // Missing driver is a warning
       if (order.missingFields.includes('driver')) {
         return 'warning';
@@ -366,6 +397,8 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     
     // Call the onOrdersVerified callback with the final orders
     onOrdersVerified(finalOrders);
+    
+    console.log(`Applied verification changes to ${ordersWithIssues.length} orders`);
   }, [orders, ordersWithIssues, onOrdersVerified]);
 
   return {

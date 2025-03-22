@@ -64,6 +64,14 @@ export function OrderDetails({
   const isTripNumberNoise = selectedOrder.tripNumber ? 
     isNoiseOrTestTripNumber(selectedOrder.tripNumber) : false;
     
+  // Get safe string values for display, ensuring they're never undefined
+  const tripNumberValue = selectedOrder.tripNumber || '';
+  const driverValue = selectedOrder.driver || '';
+  const pickupValue = selectedOrder.pickup || '';
+  const dropoffValue = selectedOrder.dropoff || '';
+  const readyTimeValue = selectedOrder.exReadyTime || '';
+  const deliveryTimeValue = selectedOrder.exDeliveryTime || '';
+  
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">
@@ -85,13 +93,13 @@ export function OrderDetails({
                 <OrderDetailField
                   label="Trip Number"
                   fieldName="tripNumber"
-                  value={selectedOrder.tripNumber || ''}
+                  value={tripNumberValue}
                   isEditing={editingField === 'tripNumber'}
-                  isError={!selectedOrder.tripNumber || selectedOrder.tripNumber.trim() === ''}
+                  isError={!tripNumberValue || tripNumberValue.trim() === ''}
                   isNoise={isTripNumberNoise}
                   isSaving={isSavingField}
                   suggestedValues={suggestedTripNumbers}
-                  validationStatus={getFieldValidationStatus('tripNumber', selectedOrder.tripNumber || '')}
+                  validationStatus={getFieldValidationStatus('tripNumber', tripNumberValue)}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
                   onSave={onFieldUpdate}
@@ -113,11 +121,11 @@ export function OrderDetails({
                 <OrderDetailField
                   label="Driver"
                   fieldName="driver"
-                  value={selectedOrder.driver || ''}
+                  value={driverValue}
                   isEditing={editingField === 'driver'}
                   isSaving={isSavingField}
                   suggestedValues={suggestedDrivers}
-                  validationStatus={getFieldValidationStatus('driver', selectedOrder.driver || '')}
+                  validationStatus={getFieldValidationStatus('driver', driverValue)}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
                   onSave={onFieldUpdate}
@@ -140,11 +148,11 @@ export function OrderDetails({
                   <OrderDetailField
                     label="Pickup Address"
                     fieldName="pickup"
-                    value={selectedOrder.pickup || ''}
+                    value={pickupValue}
                     isEditing={editingField === 'pickup'}
-                    isError={!selectedOrder.pickup}
+                    isError={!pickupValue}
                     isSaving={isSavingField}
-                    validationStatus={getFieldValidationStatus('pickup', selectedOrder.pickup || '')}
+                    validationStatus={getFieldValidationStatus('pickup', pickupValue)}
                     onEdit={onFieldEdit}
                     onValueChange={onFieldValueChange}
                     onSave={onFieldUpdate}
@@ -164,11 +172,11 @@ export function OrderDetails({
                   <OrderDetailField
                     label="Dropoff Address"
                     fieldName="dropoff"
-                    value={selectedOrder.dropoff || ''}
+                    value={dropoffValue}
                     isEditing={editingField === 'dropoff'}
-                    isError={!selectedOrder.dropoff}
+                    isError={!dropoffValue}
                     isSaving={isSavingField}
-                    validationStatus={getFieldValidationStatus('dropoff', selectedOrder.dropoff || '')}
+                    validationStatus={getFieldValidationStatus('dropoff', dropoffValue)}
                     onEdit={onFieldEdit}
                     onValueChange={onFieldValueChange}
                     onSave={onFieldUpdate}
@@ -187,10 +195,10 @@ export function OrderDetails({
           <OrderDetailField
             label="Ready Time"
             fieldName="exReadyTime"
-            value={selectedOrder.exReadyTime || ''}
+            value={readyTimeValue}
             isEditing={editingField === 'exReadyTime'}
             isSaving={isSavingField}
-            validationStatus={getFieldValidationStatus('exReadyTime', selectedOrder.exReadyTime || '')}
+            validationStatus={getFieldValidationStatus('exReadyTime', readyTimeValue)}
             onEdit={onFieldEdit}
             onValueChange={onFieldValueChange}
             onSave={onFieldUpdate}
@@ -199,10 +207,10 @@ export function OrderDetails({
           <OrderDetailField
             label="Delivery Time"
             fieldName="exDeliveryTime"
-            value={selectedOrder.exDeliveryTime || ''}
+            value={deliveryTimeValue}
             isEditing={editingField === 'exDeliveryTime'}
             isSaving={isSavingField}
-            validationStatus={getFieldValidationStatus('exDeliveryTime', selectedOrder.exDeliveryTime || '')}
+            validationStatus={getFieldValidationStatus('exDeliveryTime', deliveryTimeValue)}
             onEdit={onFieldEdit}
             onValueChange={onFieldValueChange}
             onSave={onFieldUpdate}
