@@ -38,7 +38,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     });
     
     try {
-      // Generate invoice using the new billing logic with Mapbox integration
+      // Generate invoice with proper route batching and pricing
       const generatedInvoice = await generateInvoice(orders);
       setInvoice(generatedInvoice);
       

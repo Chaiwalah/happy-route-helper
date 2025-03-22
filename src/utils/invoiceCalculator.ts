@@ -64,7 +64,7 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     });
   }
   
-  // Calculate totals (no duplicated costs since each route is represented by a single item)
+  // Calculate totals
   const totalDistance = items.reduce((sum, item) => sum + item.distance, 0);
   const totalCost = items.reduce((sum, item) => sum + item.totalCost, 0);
   

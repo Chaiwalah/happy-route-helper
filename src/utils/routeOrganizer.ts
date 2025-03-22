@@ -2,17 +2,20 @@
 import { DeliveryOrder } from './csvParser';
 import { OrderRoute } from './invoiceTypes';
 
-// Organize orders into routes by driver, TripNumber, and date
+// Organize orders into routes by TripNumber, driver, and date
 export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] => {
   const routeMap = new Map<string, DeliveryOrder[]>();
   
-  // First, group orders by driver and TripNumber (if available)
+  // First, group orders by TripNumber, driver, and date
   orders.forEach(order => {
     const driver = order.driver || 'Unassigned';
+    const dateStr = order.exReadyTime 
+      ? new Date(order.exReadyTime).toISOString().split('T')[0] 
+      : 'unknown-date';
     
     // If TripNumber exists, use it for route grouping
     if (order.tripNumber) {
-      const routeKey = `${driver}-trip-${order.tripNumber}`;
+      const routeKey = `${driver}-${dateStr}-trip-${order.tripNumber}`;
       
       if (!routeMap.has(routeKey)) {
         routeMap.set(routeKey, []);
@@ -25,7 +28,6 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       // Extract date and hour from ready time for time window grouping
       const readyTime = new Date(order.exReadyTime);
       if (!isNaN(readyTime.getTime())) {
-        const dateStr = readyTime.toISOString().split('T')[0];
         const hour = readyTime.getHours();
         
         // Group by driver, date, and hour window
