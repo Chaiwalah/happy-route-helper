@@ -83,25 +83,18 @@ export function OrderDetails({
             <TooltipTrigger asChild>
               <div className="w-full">
                 <OrderDetailField
-                  label={(
-                    <div className="flex items-center">
-                      Trip Number
-                      <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
-                    </div>
-                  )}
+                  label="Trip Number"
                   fieldName="tripNumber"
                   value={selectedOrder.tripNumber || ''}
-                  isCritical={true}
                   isEditing={editingField === 'tripNumber'}
-                  editingValue={fieldValue}
-                  onEditStart={onFieldEdit}
-                  onEditChange={onFieldValueChange}
-                  onEditSave={onFieldUpdate}
                   isError={!selectedOrder.tripNumber || selectedOrder.tripNumber.trim() === ''}
                   isNoise={isTripNumberNoise}
                   isSaving={isSavingField}
-                  suggestions={suggestedTripNumbers}
+                  suggestedValues={suggestedTripNumbers}
                   validationStatus={getFieldValidationStatus('tripNumber', selectedOrder.tripNumber || '')}
+                  onEdit={onFieldEdit}
+                  onValueChange={onFieldValueChange}
+                  onSave={onFieldUpdate}
                 />
               </div>
             </TooltipTrigger>
@@ -118,22 +111,16 @@ export function OrderDetails({
             <TooltipTrigger asChild>
               <div className="w-full">
                 <OrderDetailField
-                  label={(
-                    <div className="flex items-center">
-                      Driver
-                      <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
-                    </div>
-                  )}
+                  label="Driver"
                   fieldName="driver"
                   value={selectedOrder.driver || ''}
                   isEditing={editingField === 'driver'}
-                  editingValue={fieldValue}
-                  onEditStart={onFieldEdit}
-                  onEditChange={onFieldValueChange}
-                  onEditSave={onFieldUpdate}
                   isSaving={isSavingField}
-                  suggestions={suggestedDrivers}
+                  suggestedValues={suggestedDrivers}
                   validationStatus={getFieldValidationStatus('driver', selectedOrder.driver || '')}
+                  onEdit={onFieldEdit}
+                  onValueChange={onFieldValueChange}
+                  onSave={onFieldUpdate}
                 />
               </div>
             </TooltipTrigger>
@@ -151,22 +138,16 @@ export function OrderDetails({
               <TooltipTrigger asChild>
                 <div className="w-full">
                   <OrderDetailField
-                    label={(
-                      <div className="flex items-center">
-                        Pickup Address
-                        <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
-                      </div>
-                    )}
+                    label="Pickup Address"
                     fieldName="pickup"
                     value={selectedOrder.pickup || ''}
                     isEditing={editingField === 'pickup'}
-                    editingValue={fieldValue}
-                    onEditStart={onFieldEdit}
-                    onEditChange={onFieldValueChange}
-                    onEditSave={onFieldUpdate}
                     isError={!selectedOrder.pickup}
                     isSaving={isSavingField}
                     validationStatus={getFieldValidationStatus('pickup', selectedOrder.pickup || '')}
+                    onEdit={onFieldEdit}
+                    onValueChange={onFieldValueChange}
+                    onSave={onFieldUpdate}
                   />
                 </div>
               </TooltipTrigger>
@@ -181,22 +162,16 @@ export function OrderDetails({
               <TooltipTrigger asChild>
                 <div className="w-full">
                   <OrderDetailField
-                    label={(
-                      <div className="flex items-center">
-                        Dropoff Address
-                        <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
-                      </div>
-                    )}
+                    label="Dropoff Address"
                     fieldName="dropoff"
                     value={selectedOrder.dropoff || ''}
                     isEditing={editingField === 'dropoff'}
-                    editingValue={fieldValue}
-                    onEditStart={onFieldEdit}
-                    onEditChange={onFieldValueChange}
-                    onEditSave={onFieldUpdate}
                     isError={!selectedOrder.dropoff}
                     isSaving={isSavingField}
                     validationStatus={getFieldValidationStatus('dropoff', selectedOrder.dropoff || '')}
+                    onEdit={onFieldEdit}
+                    onValueChange={onFieldValueChange}
+                    onSave={onFieldUpdate}
                   />
                 </div>
               </TooltipTrigger>
@@ -214,12 +189,11 @@ export function OrderDetails({
             fieldName="exReadyTime"
             value={selectedOrder.exReadyTime || ''}
             isEditing={editingField === 'exReadyTime'}
-            editingValue={fieldValue}
-            onEditStart={onFieldEdit}
-            onEditChange={onFieldValueChange}
-            onEditSave={onFieldUpdate}
             isSaving={isSavingField}
             validationStatus={getFieldValidationStatus('exReadyTime', selectedOrder.exReadyTime || '')}
+            onEdit={onFieldEdit}
+            onValueChange={onFieldValueChange}
+            onSave={onFieldUpdate}
           />
           
           <OrderDetailField
@@ -227,12 +201,11 @@ export function OrderDetails({
             fieldName="exDeliveryTime"
             value={selectedOrder.exDeliveryTime || ''}
             isEditing={editingField === 'exDeliveryTime'}
-            editingValue={fieldValue}
-            onEditStart={onFieldEdit}
-            onEditChange={onFieldValueChange}
-            onEditSave={onFieldUpdate}
             isSaving={isSavingField}
             validationStatus={getFieldValidationStatus('exDeliveryTime', selectedOrder.exDeliveryTime || '')}
+            onEdit={onFieldEdit}
+            onValueChange={onFieldValueChange}
+            onSave={onFieldUpdate}
           />
         </div>
       </div>
