@@ -6,11 +6,15 @@ export type DeliveryOrder = {
   dropoff?: string;
   timeWindowStart?: string;
   timeWindowEnd?: string;
+  exReadyTime?: string;      // Expected pickup time
+  exDeliveryTime?: string;   // Expected delivery time
+  actualPickupTime?: string; // Actual pickup time
+  actualDeliveryTime?: string; // Actual delivery time
   items?: string;
   notes?: string;
   estimatedDistance?: number;
-  missingAddress?: boolean; // Keeping for backward compatibility
-  missingFields: string[]; // Array to track all missing fields
+  missingAddress?: boolean;  // Keeping for backward compatibility
+  missingFields: string[];   // Array to track all missing fields
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
@@ -82,28 +86,54 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       missingFields.push('address');
     }
     
-    // Check for time window fields
-    const timeWindowStart = 
-      rawRow["Time Window Start"] || 
-      rawRow["Delivery Time Window Start"] || 
-      rawRow["Start Time"] || 
-      rawRow["time window start"] || 
-      "";
-      
-    const timeWindowEnd = 
-      rawRow["Time Window End"] || 
-      rawRow["Delivery Time Window End"] || 
-      rawRow["End Time"] || 
-      rawRow["time window end"] || 
+    // Check for pickup location - specifically looking for "Pickup Address 1"
+    const pickupAddress = 
+      rawRow["Pickup Address 1"] || 
+      rawRow["Pickup Location"] || 
+      rawRow["Pickup Address"] || 
+      rawRow["Pickup"] || 
+      rawRow["pickup"] || 
+      rawRow["pickup location"] || 
+      rawRow["pickup address"] || 
       "";
     
-    // Set time window fields if present
-    if (timeWindowStart) {
-      order.timeWindowStart = timeWindowStart;
+    if (pickupAddress) {
+      order.pickup = pickupAddress;
+    } else {
+      missingFields.push('pickupLocation');
     }
     
-    if (timeWindowEnd) {
-      order.timeWindowEnd = timeWindowEnd;
+    // Handle time fields - using exact column names as specified
+    const exReadyTime = rawRow["Ex. Ready Time"] || "";
+    const exDeliveryTime = rawRow["Ex. Delivery Time"] || "";
+    const actualPickupTime = rawRow["Actual Pickup Time"] || "";
+    const actualDeliveryTime = rawRow["Actual Delivery Time"] || "";
+    
+    // Assign time values if present
+    if (exReadyTime) {
+      order.exReadyTime = exReadyTime;
+      order.timeWindowStart = exReadyTime; // For backward compatibility
+    } else {
+      missingFields.push('exReadyTime');
+    }
+    
+    if (exDeliveryTime) {
+      order.exDeliveryTime = exDeliveryTime;
+      order.timeWindowEnd = exDeliveryTime; // For backward compatibility
+    } else {
+      missingFields.push('exDeliveryTime');
+    }
+    
+    if (actualPickupTime) {
+      order.actualPickupTime = actualPickupTime;
+    } else {
+      missingFields.push('actualPickupTime');
+    }
+    
+    if (actualDeliveryTime) {
+      order.actualDeliveryTime = actualDeliveryTime;
+    } else {
+      missingFields.push('actualDeliveryTime');
     }
     
     // Check for items
@@ -117,20 +147,8 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     
     if (items) {
       order.items = items;
-    }
-    
-    // Check for pickup location
-    const pickup = 
-      rawRow["Pickup Location"] || 
-      rawRow["Pickup Address"] || 
-      rawRow["Pickup"] || 
-      rawRow["pickup"] || 
-      rawRow["pickup location"] || 
-      rawRow["pickup address"] || 
-      "";
-    
-    if (pickup) {
-      order.pickup = pickup;
+    } else {
+      missingFields.push('items');
     }
     
     // Notes field
@@ -143,19 +161,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     
     if (notes) {
       order.notes = notes;
-    }
-    
-    // Now check which fields are missing and add them to missingFields
-    if (!timeWindowStart && !timeWindowEnd) {
-      missingFields.push('timeWindow');
-    }
-    
-    if (!items) {
-      missingFields.push('items');
-    }
-    
-    if (!pickup) {
-      missingFields.push('pickup');
     }
     
     // Set the missing fields in the order
@@ -208,6 +213,7 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'pickup': 'pickup',
     'pickup address': 'pickup',
     'pickup location': 'pickup',
+    'pickup address 1': 'pickup',
     'dropoff': 'dropoff',
     'delivery address': 'dropoff',
     'dropoff address': 'dropoff',
@@ -215,8 +221,12 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'delivery address 1': 'dropoff',
     'time window start': 'timeWindowStart',
     'start time': 'timeWindowStart',
+    'ex. ready time': 'exReadyTime',
     'time window end': 'timeWindowEnd',
     'end time': 'timeWindowEnd',
+    'ex. delivery time': 'exDeliveryTime',
+    'actual pickup time': 'actualPickupTime',
+    'actual delivery time': 'actualDeliveryTime',
     'items': 'items',
     'items description': 'items',
     'product': 'items',

@@ -141,8 +141,11 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
         .map(field => {
           switch(field) {
             case 'address': return 'delivery address';
-            case 'timeWindow': return 'time window';
-            case 'pickup': return 'pickup location';
+            case 'pickupLocation': return 'pickup location';
+            case 'exReadyTime': return 'expected ready time';
+            case 'exDeliveryTime': return 'expected delivery time';
+            case 'actualPickupTime': return 'actual pickup time';
+            case 'actualDeliveryTime': return 'actual delivery time';
             case 'items': return 'items';
             default: return field;
           }

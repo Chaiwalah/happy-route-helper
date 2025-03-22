@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from 'react';
@@ -172,7 +173,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       </div>
       
       <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        <p>Expected CSV format: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">driver,pickup,dropoff,timeWindowStart,timeWindowEnd,items,notes</span></p>
+        <p>Expected CSV format includes: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">Pickup Address 1, Ex. Ready Time, Ex. Delivery Time, Actual Pickup Time, Actual Delivery Time</span></p>
       </div>
     </div>
   );
