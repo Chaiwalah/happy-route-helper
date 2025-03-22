@@ -94,7 +94,6 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
     const stops = routeOrders.length;
     
     // Apply billing logic
-    let routeCost = 0;
     let baseCost = 0;
     let addOns = 0;
     
@@ -107,13 +106,13 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       else {
         baseCost = totalDistance * 1.10;
       }
-      routeCost = baseCost;
     } else {
       // Multi-stop routes: (total mileage × $1.10) + $12 for each extra stop
       baseCost = totalDistance * 1.10;
-      addOns = (stops - 1) * 12;
-      routeCost = baseCost + addOns;
+      addOns = (stops - 1) * 12; // $12 per each extra stop beyond the first
     }
+    
+    const routeCost = baseCost + addOns;
     
     // Create an invoice item for each order in the route
     routeOrders.forEach(order => {
@@ -127,8 +126,6 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       // For the invoice, we need to distribute the route cost among orders
       // Simplest approach: divide equally among all orders in the route
       const orderCost = routeCost / stops;
-      
-      // Keep track of missing fields but don't add surcharges - that's no longer part of the billing logic
       
       items.push({
         orderId: order.id,
