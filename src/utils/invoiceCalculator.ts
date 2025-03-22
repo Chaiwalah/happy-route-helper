@@ -60,7 +60,15 @@ const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): Map<string, Delivery
     }
     
     // Create a route key combining driver and date
-    const routeKey = `${driver}-${deliveryDate}`;
+    let routeKey;
+    
+    // For unassigned orders, create a unique route key using the order ID
+    if (driver === 'Unassigned') {
+      routeKey = `${order.id}-unassigned`;
+    } else {
+      // For assigned orders, group by driver and date
+      routeKey = `${driver}-${deliveryDate}`;
+    }
     
     // Add order to the appropriate route
     if (!routes.has(routeKey)) {
@@ -78,7 +86,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
-  // Organize orders into routes by driver and date
+  // Organize orders into routes by driver and date (unassigned orders get their own routes)
   const routes = organizeOrdersIntoRoutes(orders);
   
   // Create invoice items based on routes
@@ -117,7 +125,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
     
     const routeCost = baseCost + addOns;
     
-    // Create an invoice item for each order in the route
+    // Create invoice items for each order in the route
     routeOrders.forEach(order => {
       const driver = order.driver || 'Unassigned';
       const pickup = order.pickup || 'Unknown location';
@@ -126,10 +134,18 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       // Get individual order distance, default to 0 if not available
       const orderDistance = order.estimatedDistance || 0;
       
-      // Distribute the costs evenly among orders in the route
-      const perOrderBaseCost = baseCost / stops;
-      const perOrderAddOns = addOns / stops;
-      const perOrderCost = routeCost / stops;
+      // For multi-stop routes with assigned drivers, distribute costs evenly
+      // For unassigned orders, each is already its own route (single order)
+      let itemBaseCost = baseCost;
+      let itemAddOns = addOns;
+      let itemTotalCost = routeCost;
+      
+      if (routeType === 'multi-stop' && driver !== 'Unassigned') {
+        // Distribute the costs evenly among orders in the route
+        itemBaseCost = baseCost / stops;
+        itemAddOns = addOns / stops;
+        itemTotalCost = routeCost / stops;
+      }
       
       items.push({
         orderId: order.id,
@@ -139,9 +155,9 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
         distance: orderDistance,
         stops,
         routeType,
-        baseCost: perOrderBaseCost,
-        addOns: perOrderAddOns,
-        totalCost: perOrderCost
+        baseCost: itemBaseCost,
+        addOns: itemAddOns,
+        totalCost: itemTotalCost
       });
     });
   });
