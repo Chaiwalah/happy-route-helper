@@ -5,7 +5,7 @@ import { DeliveryOrder } from "./csvParser";
 // In a production app, you would integrate with a real mapping API
 export const calculateDistances = async (
   orders: DeliveryOrder[]
-): Promise<DeliveryOrder[]> {
+): Promise<DeliveryOrder[]> => {
   // This is a mock that simulates API latency
   await new Promise(resolve => setTimeout(resolve, 500));
   
