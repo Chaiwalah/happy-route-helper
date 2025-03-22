@@ -20,7 +20,21 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
 
   // Initialize local state when data changes
   useEffect(() => {
-    setOrders(data);
+    // Ensure all orders have proper field initialization
+    const initializedOrders = data.map(order => ({
+      ...order,
+      // Ensure tripNumber is not undefined or null
+      tripNumber: order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber,
+      // Ensure driver is not undefined or null
+      driver: order.driver === undefined || order.driver === null ? '' : order.driver,
+      // Ensure missingFields exists
+      missingFields: order.missingFields || []
+    }));
+    
+    setOrders(initializedOrders);
+    
+    // Log for debugging
+    console.log('[DataTable] Initialized orders:', initializedOrders);
   }, [data]);
 
   const handleEdit = (id: string) => {
@@ -61,7 +75,8 @@ export function DataTable({ data, onOrdersUpdated }: DataTableProps) {
       (order.driver?.toLowerCase() || '').includes(searchLower) ||
       (order.pickup?.toLowerCase() || '').includes(searchLower) ||
       (order.dropoff?.toLowerCase() || '').includes(searchLower) ||
-      (order.id?.toLowerCase() || '').includes(searchLower)
+      (order.id?.toLowerCase() || '').includes(searchLower) ||
+      (order.tripNumber?.toLowerCase() || '').includes(searchLower)
     );
   });
 

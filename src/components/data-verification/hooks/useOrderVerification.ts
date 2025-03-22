@@ -55,8 +55,13 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
            value.toLowerCase() === 'n/a' || 
            value.toLowerCase() === 'na' || 
            value.toLowerCase() === 'none' || 
-           value.trim() === '-' ||
-           value === 'Unassigned';
+           value.trim() === '-';
+  };
+
+  // Specific check for unassigned drivers
+  const isUnassignedDriver = (value: string | undefined | null): boolean => {
+    if (value === undefined || value === null) return true;
+    return value.trim() === 'Unassigned';
   };
 
   // Logger for debugging
@@ -73,19 +78,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     }
     
     // Deep clone orders to avoid mutating original array
-    const processedOrders = orders.map(order => {
-      // Log raw order state for debugging
-      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
-        logDebug(`Raw Order ${order.id}:`, { 
-          tripNumber: order.tripNumber || 'MISSING', 
-          driver: order.driver || 'MISSING',
-          missingFields: order.missingFields || []
-        });
-      }
-      
-      // Create a deep clone to avoid mutations
-      return {...order};
-    });
+    const processedOrders = JSON.parse(JSON.stringify(orders)) as DeliveryOrder[];
     
     // Enhanced processing to identify orders with issues
     const ordersWithTripNumberIssues = processedOrders.filter(order => {
@@ -98,15 +91,23 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       const hasTripNumber = !isEmptyValue(order.tripNumber);
       const isTripNumberNoise = hasTripNumber && isNoiseOrTestTripNumber(order.tripNumber!);
       
-      // Log trip number validation for problematic orders
-      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
-        logDebug(`Trip Number Validation for ${order.id}:`, {
-          rawValue: order.tripNumber,
-          hasTripNumber,
-          isTripNumberNoise,
-          isEmptyValue: isEmptyValue(order.tripNumber),
-          inMissingFields: order.missingFields.includes('tripNumber')
-        });
+      // Log raw trip number for debugging
+      logDebug(`Raw trip number for ${order.id}:`, {
+        value: order.tripNumber,
+        type: typeof order.tripNumber
+      });
+      
+      // Log trip number validation for all orders
+      logDebug(`Trip Number Validation for ${order.id}:`, {
+        rawValue: order.tripNumber,
+        hasTripNumber,
+        isTripNumberNoise,
+        isEmptyValue: isEmptyValue(order.tripNumber)
+      });
+      
+      // If trip number is undefined or null, initialize it to an empty string
+      if (order.tripNumber === undefined || order.tripNumber === null) {
+        order.tripNumber = '';
       }
       
       if (hasTripNumber && !isTripNumberNoise) {
@@ -119,21 +120,24 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         // Trip number is missing or noise - add to missing fields if not already there
         if (!order.missingFields.includes('tripNumber')) {
           order.missingFields.push('tripNumber');
-          logDebug(`Added missing field flag: Order ${order.id} has ${hasTripNumber ? 'noise' : 'missing'} Trip Number "${order.tripNumber || 'undefined'}"`);
+          logDebug(`Added missing field flag: Order ${order.id} has ${hasTripNumber ? 'noise' : 'missing'} Trip Number "${order.tripNumber || ''}"`);
         }
       }
       
       // Similar enhanced check for driver
-      const hasValidDriver = !isEmptyValue(order.driver);
+      const hasValidDriver = !isEmptyValue(order.driver) && !isUnassignedDriver(order.driver);
       
-      // Log driver validation for problematic orders
-      if (order.id === 'order-17' || order.id === 'order-22' || order.id === 'order-23' || order.id === 'order-24') {
-        logDebug(`Driver Validation for ${order.id}:`, {
-          rawValue: order.driver,
-          hasValidDriver,
-          isEmptyValue: isEmptyValue(order.driver),
-          inMissingFields: order.missingFields.includes('driver')
-        });
+      // Log driver validation for all orders
+      logDebug(`Driver Validation for ${order.id}:`, {
+        rawValue: order.driver,
+        hasValidDriver,
+        isEmptyValue: isEmptyValue(order.driver),
+        isUnassigned: isUnassignedDriver(order.driver)
+      });
+      
+      // If driver is undefined or null, initialize it to an empty string
+      if (order.driver === undefined || order.driver === null) {
+        order.driver = '';
       }
       
       if (hasValidDriver) {
@@ -146,7 +150,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         // Add to missing fields if not already there
         if (!order.missingFields.includes('driver')) {
           order.missingFields.push('driver');
-          logDebug(`Added missing field flag: Order ${order.id} has missing Driver "${order.driver || 'undefined'}"`);
+          logDebug(`Added missing field flag: Order ${order.id} has missing or invalid Driver "${order.driver || ''}"`);
         }
       }
       
@@ -166,7 +170,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     const allDrivers = processedOrders
       .map(o => o.driver)
       .filter((value): value is string => 
-        !isEmptyValue(value)
+        !isEmptyValue(value) && !isUnassignedDriver(value)
       );
     
     // Set unique suggested values for autocomplete
@@ -247,6 +251,11 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
       }
     }
     
+    if (fieldName === 'driver' && isUnassignedDriver(value)) {
+      setValidationMessage('Driver cannot be "Unassigned"');
+      return false;
+    }
+    
     return true;
   };
 
@@ -311,8 +320,9 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         
         // Update missingFields based on new value
         const isEmpty = isEmptyValue(value);
+        const isUnassigned = isUnassignedDriver(value);
         
-        if (!isEmpty) {
+        if (!isEmpty && !isUnassigned) {
           // Valid driver - remove from missing fields
           updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'driver');
           logDebug(`Removed driver from missingFields for ${orderId}`);
@@ -324,7 +334,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
           }
         }
         
-        logDebug(`Updated driver: ${previousValue} -> ${value}, isEmpty: ${isEmpty}`);
+        logDebug(`Updated driver: ${previousValue} -> ${value}, isEmpty: ${isEmpty}, isUnassigned: ${isUnassigned}`);
         
       } else {
         // For other fields, simply update the value
@@ -404,7 +414,7 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     }
     
     // Check for driver issues
-    if (isEmptyValue(order.driver)) {
+    if (isEmptyValue(order.driver) || isUnassignedDriver(order.driver)) {
       return 'warning';
     }
     
@@ -457,8 +467,8 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     }
     
     // Driver should not be "Unassigned"
-    if (fieldName === 'driver' && value === 'Unassigned') {
-      return 'warning';
+    if (fieldName === 'driver' && isUnassignedDriver(value)) {
+      return 'error';
     }
     
     return 'valid';

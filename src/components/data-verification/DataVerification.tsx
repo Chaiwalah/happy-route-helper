@@ -1,3 +1,4 @@
+
 "use client"
 
 import { DeliveryOrder } from '@/utils/csvParser';
@@ -20,6 +21,17 @@ export function DataVerification({
   open,
   onOpenChange
 }: DataVerificationProps) {
+  // Initialize the orders before passing to useOrderVerification
+  const initializedOrders = orders.map(order => ({
+    ...order,
+    // Make sure tripNumber is not undefined or null
+    tripNumber: order.tripNumber === undefined || order.tripNumber === null ? '' : order.tripNumber,
+    // Make sure driver is not undefined or null
+    driver: order.driver === undefined || order.driver === null ? '' : order.driver,
+    // Ensure missingFields exists
+    missingFields: order.missingFields || []
+  }));
+
   const {
     ordersWithIssues,
     selectedOrderId,
@@ -37,9 +49,13 @@ export function DataVerification({
     handleOrdersApprove,
     getFieldValidationStatus
   } = useOrderVerification({ 
-    orders, 
+    orders: initializedOrders, 
     onOrdersVerified: onOrdersVerified 
   });
+
+  // Add some console logging to check what's happening
+  console.log('[DataVerification] Orders with issues:', ordersWithIssues);
+  console.log('[DataVerification] Selected order:', selectedOrder);
 
   // If Dialog props are provided, render in a Dialog
   if (open !== undefined && onOpenChange !== undefined) {
@@ -56,7 +72,7 @@ export function DataVerification({
             <div className="w-full md:w-1/3 border-r p-4 overflow-auto max-h-[60vh] md:max-h-full">
               <VerificationSidebar
                 ordersRequiringVerification={ordersWithIssues}
-                verifiedOrders={orders}
+                verifiedOrders={initializedOrders}
                 selectedOrderId={selectedOrderId}
                 onOrderSelect={setSelectedOrderId}
                 ordersWithTripNumberIssues={ordersWithIssues}
@@ -98,7 +114,7 @@ export function DataVerification({
       <div className="w-full md:w-1/3 border-r p-4 overflow-auto h-[300px] md:h-full">
         <VerificationSidebar
           ordersRequiringVerification={ordersWithIssues}
-          verifiedOrders={orders}
+          verifiedOrders={initializedOrders}
           selectedOrderId={selectedOrderId}
           onOrderSelect={setSelectedOrderId}
           ordersWithTripNumberIssues={ordersWithIssues}
