@@ -47,10 +47,34 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       id: `order-${index + 1}`, // Add a default ID
     };
     
+    // First pass: extract all raw values into a row object
+    const rawRow: Record<string, string> = {};
+    headers.forEach((header, i) => {
+      if (i < values.length && header) {
+        rawRow[header.trim()] = values[i] || '';
+      }
+    });
+    
+    // Handle address concatenation for delivery address
+    const addressLine = rawRow["Delivery Address 1"] || rawRow["delivery address 1"] || "";
+    const city = rawRow["Delivery City"] || rawRow["delivery city"] || "";
+    const state = rawRow["Delivery State"] || rawRow["delivery state"] || "";
+    const zip = rawRow["Delivery Zip"] || rawRow["delivery zip"] || "";
+    
+    const fullAddress = [addressLine, city, state, zip]
+      .filter(Boolean)
+      .join(", ");
+    
+    // If we found address components, set the dropoff to the full address
+    if (fullAddress.trim() !== "") {
+      order.dropoff = fullAddress;
+    }
+    
+    // Second pass: map all other fields normally
     headers.forEach((header, i) => {
       if (i < values.length && header) {
         const key = mapHeaderToProperty(header);
-        if (key) {
+        if (key && key !== 'dropoff') { // Skip dropoff as we've already handled it
           (order as any)[key] = values[i] || '';
         }
       }
@@ -107,6 +131,7 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'delivery address': 'dropoff',
     'dropoff address': 'dropoff',
     'destination': 'dropoff',
+    'delivery address 1': 'dropoff', // Added for direct mapping if needed
     'time window start': 'timeWindowStart',
     'start time': 'timeWindowStart',
     'time window end': 'timeWindowEnd',
