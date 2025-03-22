@@ -20,6 +20,7 @@ class PerformanceLogger {
   private performanceEntries: PerformanceEntry[] = [];
   private logPrefix: string = '🔍 [DeliveryTracker]';
   private operations: Map<string, number> = new Map();
+  private addressCache: Map<string, [number, number]> = new Map(); // Cache for geocoded addresses
 
   private constructor() {}
 
@@ -117,7 +118,8 @@ class PerformanceLogger {
     this.log('debug', `Trip Number Processing [${stage}] for ${orderId}`, {
       rawValue,
       processedValue,
-      decisions
+      decisions,
+      timestamp: new Date().toISOString()
     });
   }
 
@@ -127,8 +129,31 @@ class PerformanceLogger {
     this.log('debug', `Driver Processing [${stage}] for ${orderId}`, {
       rawValue,
       processedValue,
-      decisions
+      decisions,
+      timestamp: new Date().toISOString()
     });
+  }
+
+  // New method for address caching
+  public cacheAddress(address: string, coordinates: [number, number]): void {
+    this.addressCache.set(address, coordinates);
+    this.log('debug', `Address cached`, { address, coordinates });
+  }
+
+  // New method to retrieve cached address
+  public getCachedAddress(address: string): [number, number] | undefined {
+    const result = this.addressCache.get(address);
+    if (result) {
+      this.log('debug', `Cache hit for address`, { address });
+    }
+    return result;
+  }
+
+  // New method to clear address cache
+  public clearAddressCache(): void {
+    const cacheSize = this.addressCache.size;
+    this.addressCache.clear();
+    this.log('info', `Address cache cleared`, { entriesCleared: cacheSize });
   }
 
   public getPerformanceReport(): { totalTime: number, entries: PerformanceEntry[] } {
@@ -193,3 +218,13 @@ export const getBottlenecks = (threshold?: number) =>
 
 export const clearPerformanceLogs = () => 
   performanceLogger.clearLogs();
+
+// New address caching helpers
+export const cacheAddress = (address: string, coordinates: [number, number]) => 
+  performanceLogger.cacheAddress(address, coordinates);
+
+export const getCachedAddress = (address: string) => 
+  performanceLogger.getCachedAddress(address);
+
+export const clearAddressCache = () => 
+  performanceLogger.clearAddressCache();

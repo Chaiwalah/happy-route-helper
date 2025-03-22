@@ -1,6 +1,12 @@
 
 import { DeliveryOrder } from '@/utils/csvParser';
-import { isEmptyValue, isUnassignedDriver, normalizeFieldValue } from './validationUtils';
+import { 
+  isEmptyValue, 
+  isUnassignedDriver, 
+  normalizeFieldValue, 
+  isPlaceholderValue, 
+  isDriverNeedsVerification 
+} from './validationUtils';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { logDebug } from './logUtils';
 import {
@@ -68,7 +74,11 @@ export const processOrdersForVerification = (
     endPerformanceTracking(`processOrdersForVerification.processOrder.${order.id}`, {
       tripNumberIssue: order.missingFields.includes('tripNumber'),
       driverIssue: order.missingFields.includes('driver'),
-      isNoise: order.isNoise
+      isNoise: order.isNoise,
+      processingTime: {
+        tripNumber: tripNumberEndTime - tripNumberStartTime,
+        driver: driverEndTime - driverStartTime
+      }
     });
     
     return order;
@@ -96,11 +106,12 @@ export const processOrdersForVerification = (
   
   const allTripNumbers = processedOrders
     .map(o => o.tripNumber)
-    .filter(value => 
-      value !== null && 
-      !isEmptyValue(value) && 
-      !isNoiseOrTestTripNumber(normalizeFieldValue(value))[0]
-    )
+    .filter(value => {
+      if (value === null || isEmptyValue(value)) return false;
+      const normalizedValue = normalizeFieldValue(value);
+      const [isNoise, needsVerification] = isNoiseOrTestTripNumber(normalizedValue);
+      return !isNoise && !needsVerification;
+    })
     .map(value => normalizeFieldValue(value));
   
   // Find all unique valid drivers for suggestions (excluding unassigned and nulls)
@@ -109,7 +120,8 @@ export const processOrdersForVerification = (
     .filter(value => 
       value !== null && 
       !isEmptyValue(value) && 
-      !isUnassignedDriver(value)
+      !isUnassignedDriver(value) &&
+      !isDriverNeedsVerification(value)
     )
     .map(value => normalizeFieldValue(value));
   
@@ -147,8 +159,7 @@ export const processOrdersForVerification = (
 };
 
 /**
- * Process and normalize trip number for an order
- * Now properly handles null values as missing
+ * Process and normalize trip number for an order with enhanced verification status
  */
 function processTripNumber(order: DeliveryOrder): void {
   startPerformanceTracking(`processTripNumber.${order.id}`);
@@ -178,12 +189,13 @@ function processTripNumber(order: DeliveryOrder): void {
       'Process-TripNumber',
       null,
       null,
-      { decision: 'missing', reason: 'null value' }
+      { decision: 'missing', reason: 'null value', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processTripNumber.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'null value' 
+      reason: 'null value',
+      status: 'MISSING'
     });
     
     return;
@@ -198,92 +210,116 @@ function processTripNumber(order: DeliveryOrder): void {
     normalized: normalizedTripNumber
   });
   
-  // Use the updated isNoiseOrTestTripNumber function that returns a tuple
-  const [isNoise, isMissing] = isNoiseOrTestTripNumber(normalizedTripNumber, order);
+  // Empty trip number after normalization
+  if (normalizedTripNumber === '') {
+    order.tripNumber = ''; // Store empty string for UI display
+    
+    // Add to missing fields if not already there
+    if (!order.missingFields.includes('tripNumber')) {
+      order.missingFields.push('tripNumber');
+    }
+    
+    logTripNumberProcessing(
+      order.id,
+      'Process-TripNumber',
+      rawTripNumber,
+      '',
+      { decision: 'missing-empty', reason: 'empty value', status: 'MISSING' }
+    );
+    
+    endPerformanceTracking(`processTripNumber.${order.id}`, { 
+      result: 'missing-field', 
+      reason: 'empty value',
+      status: 'MISSING'
+    });
+    
+    return;
+  }
   
-  // Check if the trip number is valid
-  const isTripNumberEmpty = isEmptyValue(rawTripNumber);
+  // Use the comprehensive checker for noise or verification
+  const [isNoise, needsVerification] = isNoiseOrTestTripNumber(normalizedTripNumber, order);
   
-  // Store the normalized value if it was not null
+  // Store the normalized value
   order.tripNumber = normalizedTripNumber;
   
   // Update missing fields based on validation
-  if (isTripNumberEmpty || isNoise || isMissing) {
-    // Trip number is empty, noise, or missing - add to missing fields if not already there
+  if (isNoise) {
+    // Trip number is noise
     if (!order.missingFields.includes('tripNumber')) {
       order.missingFields.push('tripNumber');
-      
-      if (isNoise) {
-        logDebug(`Added missing field flag: Order ${order.id} has noise Trip Number "${normalizedTripNumber || ''}"`);
-        // Also mark the order as having a noise value
-        order.isNoise = true;
-        
-        logTripNumberProcessing(
-          order.id,
-          'Process-TripNumber',
-          rawTripNumber,
-          normalizedTripNumber,
-          { decision: 'missing-noise', reason: 'noise value', isNoise, isMissing }
-        );
-      } else if (isMissing) {
-        logDebug(`Added missing field flag: Order ${order.id} has missing Trip Number "${normalizedTripNumber || ''}"`);
-        
-        logTripNumberProcessing(
-          order.id,
-          'Process-TripNumber',
-          rawTripNumber,
-          normalizedTripNumber,
-          { decision: 'missing-na', reason: 'N/A value', isNoise, isMissing }
-        );
-      } else {
-        logDebug(`Added missing field flag: Order ${order.id} has empty Trip Number "${normalizedTripNumber || ''}"`);
-        
-        logTripNumberProcessing(
-          order.id,
-          'Process-TripNumber',
-          rawTripNumber,
-          normalizedTripNumber,
-          { decision: 'missing-empty', reason: 'empty value' }
-        );
-      }
+      logDebug(`Added missing field flag: Order ${order.id} has noise Trip Number "${normalizedTripNumber}"`);
     }
-  } else {
+    
+    // Mark the order as having a noise value
+    order.isNoise = true;
+    
+    logTripNumberProcessing(
+      order.id,
+      'Process-TripNumber',
+      rawTripNumber,
+      normalizedTripNumber,
+      { decision: 'missing-noise', reason: 'noise value', isNoise, needsVerification, status: 'NOISE' }
+    );
+    
+    endPerformanceTracking(`processTripNumber.${order.id}`, { 
+      result: 'missing-noise', 
+      reason: 'noise value',
+      status: 'NOISE'
+    });
+  } 
+  else if (needsVerification) {
+    // Trip number needs verification (placeholders like N/A)
+    if (!order.missingFields.includes('tripNumber')) {
+      order.missingFields.push('tripNumber');
+      logDebug(`Added missing field flag: Order ${order.id} has Trip Number needing verification "${normalizedTripNumber}"`);
+    }
+    
+    // Mark it as NOT noise
+    order.isNoise = false;
+    
+    logTripNumberProcessing(
+      order.id,
+      'Process-TripNumber',
+      rawTripNumber,
+      normalizedTripNumber,
+      { decision: 'needs-verification', reason: 'placeholder or unusual value', isNoise, needsVerification, status: 'NEEDS_VERIFICATION' }
+    );
+    
+    endPerformanceTracking(`processTripNumber.${order.id}`, { 
+      result: 'needs-verification', 
+      reason: 'placeholder value',
+      status: 'NEEDS_VERIFICATION'
+    });
+  }
+  else {
     // Trip number exists and is valid - remove from missing fields if present
     if (order.missingFields.includes('tripNumber')) {
       order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
       logDebug(`Removed trip number from missing fields for ${order.id}`);
-      
-      logTripNumberProcessing(
-        order.id,
-        'Process-TripNumber',
-        rawTripNumber,
-        normalizedTripNumber,
-        { decision: 'valid', reason: 'valid trip number', wasInMissingFields: true }
-      );
-    } else {
-      logTripNumberProcessing(
-        order.id,
-        'Process-TripNumber',
-        rawTripNumber,
-        normalizedTripNumber,
-        { decision: 'valid', reason: 'valid trip number' }
-      );
     }
     
     // Also ensure isNoise is set to false
     order.isNoise = false;
+    
+    logTripNumberProcessing(
+      order.id,
+      'Process-TripNumber',
+      rawTripNumber,
+      normalizedTripNumber,
+      { decision: 'valid', reason: 'valid trip number', status: 'VALID' }
+    );
+    
+    endPerformanceTracking(`processTripNumber.${order.id}`, { 
+      result: 'valid', 
+      reason: 'valid trip number',
+      status: 'VALID'
+    });
   }
-  
-  endPerformanceTracking(`processTripNumber.${order.id}`, { 
-    result: order.missingFields.includes('tripNumber') ? 'missing-field' : 'valid',
-    isMissing: order.missingFields.includes('tripNumber'),
-    isNoise: order.isNoise
-  });
 }
 
 /**
- * Process and normalize driver for an order
- * Now properly handles null values as missing and preserves explicit "Unassigned"
+ * Process and normalize driver for an order with enhanced verification status
+ * Now properly handles placeholder values that need verification
  */
 function processDriver(order: DeliveryOrder): void {
   startPerformanceTracking(`processDriver.${order.id}`);
@@ -298,9 +334,9 @@ function processDriver(order: DeliveryOrder): void {
     isNull: rawDriver === null
   });
   
-  // If driver is null, it's truly missing
+  // If driver is null, it's truly missing (not the same as "Unassigned")
   if (rawDriver === null) {
-    // Leave it as null to indicate it's missing (not Unassigned)
+    // Leave it as null to indicate it's missing
     logDebug(`Order ${order.id} has null Driver (truly missing)`);
     
     // Add to missing fields if not already there
@@ -313,12 +349,13 @@ function processDriver(order: DeliveryOrder): void {
       'Process-Driver',
       null,
       null,
-      { decision: 'missing', reason: 'null value' }
+      { decision: 'missing', reason: 'null value', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processDriver.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'null value' 
+      reason: 'null value',
+      status: 'MISSING'
     });
     
     return;
@@ -333,81 +370,105 @@ function processDriver(order: DeliveryOrder): void {
     normalized: normalizedDriver
   });
   
-  // Check if the driver is valid
-  const isDriverEmpty = isEmptyValue(rawDriver);
-  const isDriverExplicitlyUnassigned = !isDriverEmpty && normalizedDriver.toLowerCase() === 'unassigned';
-  
-  // Store the normalized value
-  // Important: We preserve the original "Unassigned" if it was explicitly set
-  if (isDriverExplicitlyUnassigned) {
-    order.driver = 'Unassigned'; // Standardize capitalization
+  // Empty driver after normalization
+  if (normalizedDriver === '') {
+    order.driver = ''; // Store empty string for UI display
     
-    logDriverProcessing(
-      order.id,
-      'Process-Driver',
-      rawDriver,
-      'Unassigned',
-      { decision: 'unassigned', reason: 'Explicit Unassigned' }
-    );
-  } else if (isDriverEmpty) {
-    // For empty values, we maintain them as empty strings, not "Unassigned"
-    order.driver = '';
+    // Add to missing fields if not already there
+    if (!order.missingFields.includes('driver')) {
+      order.missingFields.push('driver');
+    }
     
     logDriverProcessing(
       order.id,
       'Process-Driver',
       rawDriver,
       '',
-      { decision: 'empty', reason: 'Empty value' }
+      { decision: 'missing-empty', reason: 'empty value', status: 'MISSING' }
     );
-  } else {
-    // For non-empty, non-unassigned values, use the normalized value
+    
+    endPerformanceTracking(`processDriver.${order.id}`, { 
+      result: 'missing-field', 
+      reason: 'empty value',
+      status: 'MISSING'
+    });
+    
+    return;
+  }
+  
+  // Check for explicitly "Unassigned" driver
+  if (isUnassignedDriver(rawDriver)) {
+    order.driver = 'Unassigned'; // Standardize capitalization
+    
+    // Add to missing fields if not already there (needs to be assigned)
+    if (!order.missingFields.includes('driver')) {
+      order.missingFields.push('driver');
+    }
+    
+    logDriverProcessing(
+      order.id,
+      'Process-Driver',
+      rawDriver,
+      'Unassigned',
+      { decision: 'needs-assignment', reason: 'Explicitly Unassigned', status: 'NEEDS_ASSIGNMENT' }
+    );
+    
+    endPerformanceTracking(`processDriver.${order.id}`, { 
+      result: 'needs-assignment', 
+      reason: 'explicitly unassigned',
+      status: 'NEEDS_ASSIGNMENT'
+    });
+    
+    return;
+  }
+  
+  // Check for placeholder values like 'n/a', 'none', etc.
+  if (isPlaceholderValue(rawDriver)) {
+    // Store the normalized value but mark it for verification
     order.driver = normalizedDriver;
+    
+    // Add to missing fields if not already there (needs verification)
+    if (!order.missingFields.includes('driver')) {
+      order.missingFields.push('driver');
+    }
     
     logDriverProcessing(
       order.id,
       'Process-Driver',
       rawDriver,
       normalizedDriver,
-      { decision: 'valid', reason: 'Valid driver name' }
+      { decision: 'needs-verification', reason: 'Placeholder value', status: 'NEEDS_VERIFICATION' }
     );
+    
+    endPerformanceTracking(`processDriver.${order.id}`, { 
+      result: 'needs-verification', 
+      reason: 'placeholder value',
+      status: 'NEEDS_VERIFICATION'
+    });
+    
+    return;
   }
   
-  // Update missing fields based on validation
-  if (isDriverEmpty || isDriverExplicitlyUnassigned) {
-    // Driver is empty or explicitly Unassigned - add to missing fields if not already there
-    if (!order.missingFields.includes('driver')) {
-      order.missingFields.push('driver');
-      const reason = isDriverEmpty ? 'empty' : 'explicitly Unassigned';
-      logDebug(`Added missing field flag: Order ${order.id} has ${reason} Driver "${order.driver || ''}"`);
-      
-      logDriverProcessing(
-        order.id,
-        'Process-Driver',
-        rawDriver,
-        order.driver,
-        { decision: 'missing-field-added', reason }
-      );
-    }
-  } else {
-    // Driver exists and is valid - remove from missing fields if present
-    if (order.missingFields.includes('driver')) {
-      order.missingFields = order.missingFields.filter(field => field !== 'driver');
-      logDebug(`Removed driver from missing fields for ${order.id}`);
-      
-      logDriverProcessing(
-        order.id,
-        'Process-Driver',
-        rawDriver,
-        order.driver,
-        { decision: 'valid', reason: 'Valid driver', wasInMissingFields: true }
-      );
-    }
+  // For all other cases, use the normalized value as is (valid driver)
+  order.driver = normalizedDriver;
+  
+  // Remove from missing fields if present (it's valid)
+  if (order.missingFields.includes('driver')) {
+    order.missingFields = order.missingFields.filter(field => field !== 'driver');
+    logDebug(`Removed driver from missing fields for ${order.id}`);
   }
+  
+  logDriverProcessing(
+    order.id,
+    'Process-Driver',
+    rawDriver,
+    normalizedDriver,
+    { decision: 'valid', reason: 'Valid driver name', status: 'VALID' }
+  );
   
   endPerformanceTracking(`processDriver.${order.id}`, { 
-    result: order.missingFields.includes('driver') ? 'missing-field' : 'valid',
-    isMissing: order.missingFields.includes('driver'),
-    isExplicitlyUnassigned: isDriverExplicitlyUnassigned
+    result: 'valid', 
+    reason: 'valid driver',
+    status: 'VALID'
   });
 }

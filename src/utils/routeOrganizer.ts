@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 import { 
   startPerformanceTracking, 
@@ -7,7 +6,7 @@ import {
   logDebug
 } from './performanceLogger';
 
-// Check if a trip number is a test/noise value that should be ignored or missing
+// Comprehensive check if a trip number is a test/noise value or missing
 export const isNoiseOrTestTripNumber = (
   tripNumber: string | undefined | null, 
   order?: DeliveryOrder
@@ -15,38 +14,71 @@ export const isNoiseOrTestTripNumber = (
   const orderId = order?.id || 'unknown-order';
   startPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { tripNumber });
   
-  if (!tripNumber) {
+  // Case 1: Null or undefined trip number - it's missing but not noise
+  if (tripNumber === null || tripNumber === undefined) {
     logTripNumberProcessing(
       orderId,
       'Noise-Check',
       tripNumber,
       null,
-      { result: [false, true], reason: 'Null or undefined value' }
+      { result: [false, true], reason: 'Null or undefined value', status: 'MISSING' }
     );
     endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
       result: [false, true],
-      reason: 'No trip number (null/undefined)' 
+      reason: 'No trip number (null/undefined)',
+      status: 'MISSING'
     });
-    return [false, true]; // No trip number means it's missing, not noise
+    return [false, true]; // Not noise, but missing
   }
   
   const trimmedValue = String(tripNumber).trim().toLowerCase();
   
-  // List of known test/noise trip number values to ignore
-  const noiseValues = ['24', '25', 'test', 'noise'];
+  // Case 2: Empty string - it's missing but not noise
+  if (trimmedValue === '') {
+    logTripNumberProcessing(
+      orderId,
+      'Noise-Check',
+      tripNumber,
+      trimmedValue,
+      { result: [false, true], reason: 'Empty string', status: 'MISSING' }
+    );
+    
+    // Update order if provided
+    if (order) {
+      order.isNoise = false;
+      if (!order.missingFields) order.missingFields = [];
+      if (!order.missingFields.includes('tripNumber')) {
+        order.missingFields.push('tripNumber');
+      }
+    }
+    
+    endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
+      result: [false, true],
+      reason: 'Empty string',
+      status: 'MISSING'
+    });
+    
+    return [false, true]; // Not noise, but missing
+  }
   
-  // Check if the trip number is in our noise list
-  if (noiseValues.includes(trimmedValue)) {
+  // Case 3: Known noise/test values
+  const noiseValues = [
+    '24', '25', 'test', 'noise', 'demo', 'sample', 
+    'example', 'testing', 'temp', 'temporary', 
+    't1', 't2', 't3', 'x1', 'x2', 'x3'
+  ];
+  
+  // Check if the trip number is a known noise value
+  if (noiseValues.includes(trimmedValue) || 
+      /^test[_-]?\d+$/i.test(trimmedValue) || // test-123, test_456, etc.
+      /^t[_-]?\d+$/i.test(trimmedValue)) {   // t-123, t_456, etc.
+    
     logDebug(`Trip number "${tripNumber}" identified as noise value`);
     
-    // Mark the order as having a noise value if provided
+    // Update order if provided
     if (order) {
       order.isNoise = true;
-      
-      // Add to missing fields if not already there
-      if (!order.missingFields) {
-        order.missingFields = [];
-      }
+      if (!order.missingFields) order.missingFields = [];
       if (!order.missingFields.includes('tripNumber')) {
         order.missingFields.push('tripNumber');
       }
@@ -57,30 +89,28 @@ export const isNoiseOrTestTripNumber = (
       'Noise-Check',
       tripNumber,
       trimmedValue,
-      { result: [true, false], reason: 'Matches known noise value', noiseValues }
+      { result: [true, false], reason: 'Matches known noise pattern', noiseValues, status: 'NOISE' }
     );
     
     endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
       result: [true, false],
       reason: 'Matched noise value',
-      matched: trimmedValue
+      matched: trimmedValue,
+      status: 'NOISE'
     });
     
     return [true, false]; // It's noise, but not a missing value
   }
   
-  // N/A values are not noise, they're missing values that need to be fixed in verification
-  if (trimmedValue === 'n/a' || trimmedValue === 'na' || trimmedValue === 'none') {
-    logDebug(`Trip number "${tripNumber}" identified as missing (N/A)`);
+  // Case 4: Placeholder values (N/A, None, etc.) - they're missing but not noise
+  const placeholderValues = ['n/a', 'na', 'none', 'null', 'undefined', '-'];
+  if (placeholderValues.includes(trimmedValue)) {
+    logDebug(`Trip number "${tripNumber}" identified as placeholder (N/A)`);
     
-    // Mark as not noise, but update missingFields if order provided
+    // Update order if provided
     if (order) {
       order.isNoise = false;
-      
-      // Add to missing fields if not already there
-      if (!order.missingFields) {
-        order.missingFields = [];
-      }
+      if (!order.missingFields) order.missingFields = [];
       if (!order.missingFields.includes('tripNumber')) {
         order.missingFields.push('tripNumber');
       }
@@ -91,21 +121,59 @@ export const isNoiseOrTestTripNumber = (
       'Noise-Check',
       tripNumber,
       trimmedValue,
-      { result: [false, true], reason: 'N/A or missing value placeholder' }
+      { result: [false, true], reason: 'Placeholder value', status: 'NEEDS_VERIFICATION' }
     );
     
     endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
       result: [false, true],
-      reason: 'N/A value',
-      value: trimmedValue
+      reason: 'Placeholder value',
+      value: trimmedValue,
+      status: 'NEEDS_VERIFICATION'
     });
     
-    return [false, true]; // Not noise, but it is missing
+    return [false, true]; // Not noise, but needs verification
   }
   
-  // Neither noise nor missing - it's a valid trip number
+  // Case 5: Valid trip number format check
+  const validFormat = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/.test(trimmedValue);
+  
+  if (!validFormat) {
+    logDebug(`Trip number "${tripNumber}" has unusual format, flagging for verification`);
+    
+    // Update order if provided
+    if (order) {
+      // Not noise, but needs verification
+      order.isNoise = false;
+      if (!order.missingFields) order.missingFields = [];
+      if (!order.missingFields.includes('tripNumber')) {
+        order.missingFields.push('tripNumber');
+      }
+    }
+    
+    logTripNumberProcessing(
+      orderId,
+      'Noise-Check',
+      tripNumber,
+      trimmedValue,
+      { result: [false, true], reason: 'Unusual format', status: 'NEEDS_VERIFICATION' }
+    );
+    
+    endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
+      result: [false, true],
+      reason: 'Unusual format',
+      status: 'NEEDS_VERIFICATION'
+    });
+    
+    return [false, true]; // Not noise, but needs verification due to unusual format
+  }
+  
+  // Case 6: All checks passed - it's a valid trip number
   if (order) {
     order.isNoise = false;
+    // Remove from missing fields if present
+    if (order.missingFields && order.missingFields.includes('tripNumber')) {
+      order.missingFields = order.missingFields.filter(f => f !== 'tripNumber');
+    }
   }
   
   logTripNumberProcessing(
@@ -113,15 +181,16 @@ export const isNoiseOrTestTripNumber = (
     'Noise-Check',
     tripNumber,
     trimmedValue,
-    { result: [false, false], reason: 'Valid trip number' }
+    { result: [false, false], reason: 'Valid trip number', status: 'VALID' }
   );
   
   endPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
     result: [false, false],
-    reason: 'Valid trip number'
+    reason: 'Valid trip number',
+    status: 'VALID'
   });
   
-  return [false, false];
+  return [false, false]; // Neither noise nor missing - it's valid
 };
 
 // New function that only marks noise trip numbers but doesn't filter them

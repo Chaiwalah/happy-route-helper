@@ -80,48 +80,82 @@ export const isEmptyValue = (value: any): boolean => {
   // Normalize the value first for other cases
   const normalizedValue = normalizeFieldValue(value);
   
-  // Check if normalized value is empty or special "empty" values
-  if (!normalizedValue) {
+  // Check if normalized value is empty
+  if (!normalizedValue || normalizedValue.trim() === '') {
     endPerformanceTracking(operationId, { result: true, reason: 'empty after normalization' });
     return true;
   }
   
-  const trimmedLower = normalizedValue.trim().toLowerCase();
-  const isEmpty = trimmedLower === '' || 
-         trimmedLower === 'n/a' || 
-         trimmedLower === 'na' || 
-         trimmedLower === 'none' || 
-         trimmedLower === 'null' ||
-         trimmedLower === 'undefined' ||
-         trimmedLower === '-';
+  // We're not considering special values like 'n/a' as empty anymore
+  // They'll be handled separately as "needs verification" status
   
   endPerformanceTracking(operationId, { 
-    result: isEmpty, 
-    reason: isEmpty ? 'special empty value' : 'has value',
+    result: false, 
+    reason: 'has value',
     normalizedValue
   });
   
-  return isEmpty;
+  return false;
 };
 
 /**
- * Specific check for unassigned drivers
- * Now distinguishes between null (missing) and explicitly set "Unassigned"
+ * Check if a value is a placeholder that needs verification
+ * Values like 'n/a', 'none', etc. are handled here
  */
-export const isUnassignedDriver = (value: any): boolean => {
-  const operationId = `isUnassignedDriver.${Math.random().toString(36).substr(2, 9)}`;
+export const isPlaceholderValue = (value: any): boolean => {
+  const operationId = `isPlaceholderValue.${Math.random().toString(36).substr(2, 9)}`;
   startPerformanceTracking(operationId, { valueType: typeof value });
   
-  // Null is considered missing, not unassigned
+  // Null and undefined are not considered placeholders
   if (value === null || value === undefined) {
     endPerformanceTracking(operationId, { result: false, reason: 'null/undefined' });
     return false;
   }
   
-  // First normalize the value for string comparison
+  // Normalize the value
   const normalizedValue = normalizeFieldValue(value);
+  const trimmedLower = normalizedValue.trim().toLowerCase();
+  
+  // Check against known placeholder values
+  const isPlaceholder = 
+    trimmedLower === 'n/a' || 
+    trimmedLower === 'na' || 
+    trimmedLower === 'none' || 
+    trimmedLower === 'null' ||
+    trimmedLower === 'undefined' ||
+    trimmedLower === '-';
+  
+  endPerformanceTracking(operationId, { 
+    result: isPlaceholder, 
+    reason: isPlaceholder ? 'placeholder value' : 'not a placeholder',
+    normalizedValue
+  });
+  
+  return isPlaceholder;
+};
+
+/**
+ * Specific check for unassigned drivers
+ * Now distinguishes between null (missing), empty, placeholder, and explicitly "Unassigned"
+ */
+export const isUnassignedDriver = (value: any): boolean => {
+  const operationId = `isUnassignedDriver.${Math.random().toString(36).substr(2, 9)}`;
+  startPerformanceTracking(operationId, { valueType: typeof value });
+  
+  // Null/undefined is not explicitly "Unassigned"
+  if (value === null || value === undefined) {
+    endPerformanceTracking(operationId, { result: false, reason: 'null/undefined' });
+    return false;
+  }
+  
+  // Empty string is not explicitly "Unassigned"
+  if (isEmptyValue(value)) {
+    endPerformanceTracking(operationId, { result: false, reason: 'empty value' });
+    return false;
+  }
   
   // Only return true if the value is explicitly "Unassigned"
+  const normalizedValue = normalizeFieldValue(value);
   const isUnassigned = normalizedValue.trim().toLowerCase() === 'unassigned';
   
   endPerformanceTracking(operationId, { 
@@ -140,7 +174,10 @@ export const isMissingDriver = (value: any): boolean => {
   const operationId = `isMissingDriver.${Math.random().toString(36).substr(2, 9)}`;
   startPerformanceTracking(operationId, { valueType: typeof value });
   
-  const isMissing = value === null || value === undefined || isEmptyValue(value);
+  // Only consider truly missing values (null/undefined/empty)
+  // Placeholders like 'N/A' are now handled separately
+  const isMissing = value === null || value === undefined || 
+                   (typeof value === 'string' && value.trim() === '');
   
   endPerformanceTracking(operationId, { 
     result: isMissing, 
@@ -151,8 +188,35 @@ export const isMissingDriver = (value: any): boolean => {
 };
 
 /**
+ * Check if driver needs verification (placeholders like 'N/A', 'none', etc.)
+ */
+export const isDriverNeedsVerification = (value: any): boolean => {
+  const operationId = `isDriverNeedsVerification.${Math.random().toString(36).substr(2, 9)}`;
+  startPerformanceTracking(operationId, { valueType: typeof value });
+  
+  // Already missing or explicitly unassigned?
+  if (isMissingDriver(value) || isUnassignedDriver(value)) {
+    endPerformanceTracking(operationId, { 
+      result: false, 
+      reason: isMissingDriver(value) ? 'missing driver' : 'explicitly unassigned'
+    });
+    return false;
+  }
+  
+  // Check if it's a placeholder value
+  const needsVerification = isPlaceholderValue(value);
+  
+  endPerformanceTracking(operationId, { 
+    result: needsVerification, 
+    reason: needsVerification ? 'placeholder value' : 'valid driver'
+  });
+  
+  return needsVerification;
+};
+
+/**
  * Validates a field based on field name and value
- * Now properly distinguishes between missing values and invalid values
+ * Now distinguishes between missing, placeholder, and valid values
  */
 export const validateField = (
   fieldName: string, 
@@ -173,38 +237,40 @@ export const validateField = (
   // Handle null and undefined values (truly missing)
   if (value === null || value === undefined) {
     if (fieldName === 'tripNumber') {
-      setValidationMessage('Trip Number is missing');
+      setValidationMessage('Trip Number is missing - Please add a trip number');
       
       logTripNumberProcessing(
         orderId,
         'Validation',
         value,
         null,
-        { valid: false, reason: 'Missing (null/undefined)' }
+        { valid: false, reason: 'Missing (null/undefined)', status: 'MISSING' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'null/undefined trip number'
+        reason: 'null/undefined trip number',
+        status: 'MISSING'
       });
       
       return false;
     }
     
     if (fieldName === 'driver') {
-      setValidationMessage('Driver is missing');
+      setValidationMessage('Driver is missing - Please assign a driver');
       
       logDriverProcessing(
         orderId,
         'Validation',
         value,
         null,
-        { valid: false, reason: 'Missing (null/undefined)' }
+        { valid: false, reason: 'Missing (null/undefined)', status: 'MISSING' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'null/undefined driver'
+        reason: 'null/undefined driver',
+        status: 'MISSING'
       });
       
       return false;
@@ -214,49 +280,96 @@ export const validateField = (
   // Normalize the value for other validations
   const normalizedValue = normalizeFieldValue(value);
   
+  // Handle empty values (but not null/undefined)
   if (isEmptyValue(value) && value !== null && value !== undefined) {
     if (fieldName === 'tripNumber') {
-      setValidationMessage('Trip Number cannot be empty');
+      setValidationMessage('Trip Number cannot be empty - Please enter a trip number');
       
       logTripNumberProcessing(
         orderId,
         'Validation',
         value,
         normalizedValue,
-        { valid: false, reason: 'Empty after normalization' }
+        { valid: false, reason: 'Empty after normalization', status: 'MISSING' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'empty trip number'
+        reason: 'empty trip number',
+        status: 'MISSING'
       });
       
       return false;
     }
     
     if (fieldName === 'driver') {
-      setValidationMessage('Driver cannot be empty');
+      setValidationMessage('Driver cannot be empty - Please assign a driver');
       
       logDriverProcessing(
         orderId,
         'Validation',
         value,
         normalizedValue,
-        { valid: false, reason: 'Empty after normalization' }
+        { valid: false, reason: 'Empty after normalization', status: 'MISSING' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'empty driver'
+        reason: 'empty driver',
+        status: 'MISSING'
       });
       
       return false;
     }
   }
   
+  // Handle placeholder values that need verification
+  if (isPlaceholderValue(value)) {
+    if (fieldName === 'tripNumber') {
+      setValidationMessage('Trip Number needs verification - "N/A" or similar values need to be replaced');
+      
+      logTripNumberProcessing(
+        orderId,
+        'Validation',
+        value,
+        normalizedValue,
+        { valid: false, reason: 'Placeholder value', status: 'NEEDS_VERIFICATION' }
+      );
+      
+      endPerformanceTracking(operationId, { 
+        valid: false, 
+        reason: 'placeholder trip number',
+        status: 'NEEDS_VERIFICATION'
+      });
+      
+      return false;
+    }
+    
+    if (fieldName === 'driver') {
+      setValidationMessage('Driver needs verification - "N/A" or similar values need to be replaced');
+      
+      logDriverProcessing(
+        orderId,
+        'Validation',
+        value,
+        normalizedValue,
+        { valid: false, reason: 'Placeholder value', status: 'NEEDS_VERIFICATION' }
+      );
+      
+      endPerformanceTracking(operationId, { 
+        valid: false, 
+        reason: 'placeholder driver',
+        status: 'NEEDS_VERIFICATION'
+      });
+      
+      return false;
+    }
+  }
+  
+  // Trip Number specific validation
   if (fieldName === 'tripNumber' && !isEmptyValue(value)) {
     // Check for noise/test values using the updated tuple return
-    const [isNoise, isMissing] = isNoiseOrTestTripNumber(normalizedValue);
+    const [isNoise, needsVerification] = isNoiseOrTestTripNumber(normalizedValue);
     
     if (isNoise) {
       setValidationMessage('Warning: This appears to be a test/noise value');
@@ -266,31 +379,33 @@ export const validateField = (
         'Validation',
         value,
         normalizedValue,
-        { valid: false, reason: 'Test/noise value', isNoise, isMissing }
+        { valid: false, reason: 'Test/noise value', isNoise, needsVerification, status: 'NOISE' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'noise trip number'
+        reason: 'noise trip number',
+        status: 'NOISE'
       });
       
       return false;
     }
     
-    if (isMissing) {
-      setValidationMessage('Trip Number cannot be N/A or None');
+    if (needsVerification) {
+      setValidationMessage('Trip Number requires verification - Please enter a valid trip number');
       
       logTripNumberProcessing(
         orderId,
         'Validation',
         value,
         normalizedValue,
-        { valid: false, reason: 'N/A or None placeholder', isNoise, isMissing }
+        { valid: false, reason: 'Needs verification', isNoise, needsVerification, status: 'NEEDS_VERIFICATION' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: false, 
-        reason: 'missing trip number (N/A)'
+        reason: 'trip number needs verification',
+        status: 'NEEDS_VERIFICATION'
       });
       
       return false;
@@ -298,7 +413,7 @@ export const validateField = (
     
     // Validate proper trip number format (e.g. TR-123456)
     const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
-    const formatValid = tripNumberPattern.test(normalizedValue.trim()) || normalizedValue.trim() === '';
+    const formatValid = tripNumberPattern.test(normalizedValue.trim());
     
     if (!formatValid) {
       setValidationMessage('Warning: Trip Number format may be incorrect. Expected format: TR-123456 or 123456');
@@ -308,69 +423,205 @@ export const validateField = (
         'Validation',
         value,
         normalizedValue,
-        { valid: true, formatWarning: true, pattern: '^([A-Za-z]{1,3}[\\-\\s]?\\d{3,8}|\\d{3,8})$' }
+        { valid: true, formatWarning: true, pattern: '^([A-Za-z]{1,3}[\\-\\s]?\\d{3,8}|\\d{3,8})$', status: 'WARNING' }
       );
       
       // Still allow it but with a warning
       endPerformanceTracking(operationId, { 
         valid: true, 
         reason: 'invalid format but allowed',
-        normalizedValue
+        normalizedValue,
+        status: 'WARNING'
       });
+      
+      return true;
     } else {
       logTripNumberProcessing(
         orderId,
         'Validation',
         value,
         normalizedValue,
-        { valid: true, formatValid: true }
+        { valid: true, formatValid: true, status: 'VALID' }
       );
       
       endPerformanceTracking(operationId, { 
         valid: true, 
         reason: 'valid trip number',
-        normalizedValue
+        normalizedValue,
+        status: 'VALID'
       });
+      
+      return true;
     }
   }
   
-  if (fieldName === 'driver' && isUnassignedDriver(value)) {
-    setValidationMessage('Driver is set to "Unassigned" - please assign a driver');
+  // Driver specific validation
+  if (fieldName === 'driver') {
+    // Check for explicitly "Unassigned" driver
+    if (isUnassignedDriver(value)) {
+      setValidationMessage('Driver is set to "Unassigned" - please assign a driver');
+      
+      logDriverProcessing(
+        orderId,
+        'Validation',
+        value,
+        normalizedValue,
+        { valid: false, reason: 'Explicitly unassigned', status: 'NEEDS_ASSIGNMENT' }
+      );
+      
+      endPerformanceTracking(operationId, { 
+        valid: false, 
+        reason: 'unassigned driver',
+        normalizedValue,
+        status: 'NEEDS_ASSIGNMENT'
+      });
+      
+      return false;
+    }
     
-    logDriverProcessing(
-      orderId,
-      'Validation',
-      value,
-      normalizedValue,
-      { valid: false, reason: 'Explicitly unassigned' }
-    );
+    // Check for driver that needs verification (N/A, None, etc.)
+    if (isDriverNeedsVerification(value)) {
+      setValidationMessage('Driver value needs verification - please enter a valid driver name');
+      
+      logDriverProcessing(
+        orderId,
+        'Validation',
+        value,
+        normalizedValue,
+        { valid: false, reason: 'Needs verification', status: 'NEEDS_VERIFICATION' }
+      );
+      
+      endPerformanceTracking(operationId, { 
+        valid: false, 
+        reason: 'driver needs verification',
+        normalizedValue,
+        status: 'NEEDS_VERIFICATION'
+      });
+      
+      return false;
+    }
     
-    endPerformanceTracking(operationId, { 
-      valid: false, 
-      reason: 'unassigned driver',
-      normalizedValue
-    });
-    
-    return false;
+    // Valid driver that's not empty, not unassigned, and not a placeholder
+    if (!isEmptyValue(value) && !isUnassignedDriver(value) && !isDriverNeedsVerification(value)) {
+      logDriverProcessing(
+        orderId,
+        'Validation',
+        value,
+        normalizedValue,
+        { valid: true, status: 'VALID' }
+      );
+      
+      endPerformanceTracking(operationId, { 
+        valid: true, 
+        reason: 'valid driver',
+        normalizedValue,
+        status: 'VALID'
+      });
+      
+      return true;
+    }
   }
   
-  if (fieldName === 'driver' && !isEmptyValue(value) && !isUnassignedDriver(value)) {
-    logDriverProcessing(
-      orderId,
-      'Validation',
-      value,
-      normalizedValue,
-      { valid: true }
-    );
-  }
-  
+  // General case - field is valid
   endPerformanceTracking(operationId, { 
     valid: true, 
     reason: 'passed all validations',
-    normalizedValue
+    normalizedValue,
+    status: 'VALID'
   });
   
   return true;
+};
+
+/**
+ * Get a status object for a field based on its validation state
+ * Now includes more detailed status categories
+ */
+export const getFieldStatus = (fieldName: string, value: any): {
+  status: 'MISSING' | 'NEEDS_VERIFICATION' | 'NOISE' | 'NEEDS_ASSIGNMENT' | 'WARNING' | 'VALID';
+  message: string;
+} => {
+  // Handle null and undefined values (truly missing)
+  if (value === null || value === undefined) {
+    return {
+      status: 'MISSING',
+      message: fieldName === 'tripNumber' 
+        ? 'Trip Number is missing' 
+        : fieldName === 'driver'
+          ? 'Driver is missing'
+          : `${fieldName} is missing`
+    };
+  }
+  
+  // Handle empty values
+  if (isEmptyValue(value)) {
+    return {
+      status: 'MISSING',
+      message: fieldName === 'tripNumber' 
+        ? 'Trip Number cannot be empty' 
+        : fieldName === 'driver'
+          ? 'Driver cannot be empty'
+          : `${fieldName} cannot be empty`
+    };
+  }
+  
+  // Handle placeholder values
+  if (isPlaceholderValue(value)) {
+    return {
+      status: 'NEEDS_VERIFICATION',
+      message: fieldName === 'tripNumber' 
+        ? 'Trip Number needs verification' 
+        : fieldName === 'driver'
+          ? 'Driver needs verification'
+          : `${fieldName} needs verification`
+    };
+  }
+  
+  // Field-specific validations
+  if (fieldName === 'tripNumber') {
+    const normalizedValue = normalizeFieldValue(value);
+    const [isNoise, needsVerification] = isNoiseOrTestTripNumber(normalizedValue);
+    
+    if (isNoise) {
+      return {
+        status: 'NOISE',
+        message: 'This appears to be a test/noise value'
+      };
+    }
+    
+    if (needsVerification) {
+      return {
+        status: 'NEEDS_VERIFICATION',
+        message: 'Trip Number requires verification'
+      };
+    }
+    
+    // Check format
+    const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
+    const formatValid = tripNumberPattern.test(normalizedValue.trim());
+    
+    if (!formatValid) {
+      return {
+        status: 'WARNING',
+        message: 'Trip Number format may be incorrect'
+      };
+    }
+  }
+  
+  if (fieldName === 'driver') {
+    if (isUnassignedDriver(value)) {
+      return {
+        status: 'NEEDS_ASSIGNMENT',
+        message: 'Driver is set to "Unassigned"'
+      };
+    }
+  }
+  
+  // Default - field is valid
+  return {
+    status: 'VALID',
+    message: ''
+  };
 };
 
 /**
