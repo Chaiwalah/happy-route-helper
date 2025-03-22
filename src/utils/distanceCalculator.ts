@@ -11,7 +11,7 @@ export const calculateDistances = async (
   
   return orders.map(order => {
     // Mock distance calculation - in a real app, this would call an API
-    const estimatedDistance = mockDistanceCalculation(order.pickup, order.dropoff);
+    const estimatedDistance = mockDistanceCalculation(order.pickup || '', order.dropoff || '');
     
     return {
       ...order,
@@ -22,6 +22,11 @@ export const calculateDistances = async (
 
 // Mock function to generate semi-realistic distances
 const mockDistanceCalculation = (origin: string, destination: string): number => {
+  // If either address is missing, generate a default distance
+  if (!origin || !destination) {
+    return Math.round((1 + Math.random() * 9) * 10) / 10; // 1-10 miles for missing addresses
+  }
+  
   // Generate a somewhat consistent but random-looking distance
   // This uses string hashing for consistency - same addresses always give same distance
   const seed = hashString(`${origin}-${destination}`);

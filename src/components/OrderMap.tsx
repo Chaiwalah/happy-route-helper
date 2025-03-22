@@ -7,7 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, AlertCircle } from 'lucide-react';
+import { MapPin, AlertCircle, Info } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
 
@@ -31,6 +31,7 @@ const OrderMap = ({ orders }: OrderMapProps) => {
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const mapLocations = useRef<MapLocation[]>([]);
+  const [missingAddressCount, setMissingAddressCount] = useState(0);
 
   const initializeMap = () => {
     if (!mapContainer.current || !mapboxToken) return;
@@ -156,6 +157,7 @@ const OrderMap = ({ orders }: OrderMapProps) => {
     
     setIsLoading(true);
     mapLocations.current = [];
+    let missingCount = 0;
     
     try {
       // Create a batch of promises for all geocoding requests
@@ -178,6 +180,8 @@ const OrderMap = ({ orders }: OrderMapProps) => {
               }
             })
           );
+        } else {
+          missingCount++;
         }
         
         if (order.dropoff) {
@@ -195,6 +199,8 @@ const OrderMap = ({ orders }: OrderMapProps) => {
               }
             })
           );
+        } else {
+          missingCount++;
         }
       }
       
@@ -204,9 +210,18 @@ const OrderMap = ({ orders }: OrderMapProps) => {
       // Update the map with markers
       updateMapMarkers();
       
-      toast({
-        description: `Geocoded ${mapLocations.current.length} locations`,
-      });
+      setMissingAddressCount(missingCount);
+      
+      if (missingCount > 0) {
+        toast({
+          description: `Geocoded ${mapLocations.current.length} locations. ${missingCount} addresses were missing.`,
+          variant: "warning",
+        });
+      } else {
+        toast({
+          description: `Geocoded ${mapLocations.current.length} locations`,
+        });
+      }
     } catch (error) {
       console.error('Error geocoding addresses:', error);
       toast({
@@ -220,6 +235,8 @@ const OrderMap = ({ orders }: OrderMapProps) => {
   };
 
   const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
+    if (!address) return null;
+    
     try {
       // Geocode the address using Mapbox Geocoding API
       const response = await fetch(
@@ -391,6 +408,15 @@ const OrderMap = ({ orders }: OrderMapProps) => {
           )}
         </div>
       </div>
+      
+      {missingAddressCount > 0 && (
+        <div className="flex items-center p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-md">
+          <Info className="text-amber-500 mr-2 h-5 w-5" />
+          <p className="text-sm text-amber-800 dark:text-amber-400">
+            {missingAddressCount} address{missingAddressCount > 1 ? 'es are' : ' is'} missing. Only orders with valid addresses are shown on the map.
+          </p>
+        </div>
+      )}
       
       <div className="rounded-md border overflow-hidden glass-card subtle-shadow">
         <div className="h-[28rem] relative">

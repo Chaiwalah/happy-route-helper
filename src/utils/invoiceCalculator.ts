@@ -54,8 +54,8 @@ export const generateInvoice = (
     return {
       orderId: order.id || 'unknown',
       driver: order.driver || 'Unassigned',
-      pickup: order.pickup || 'N/A',
-      dropoff: order.dropoff || 'N/A',
+      pickup: order.pickup || '(No pickup address)',
+      dropoff: order.dropoff || '(No dropoff address)',
       distance,
       baseCost: Number(baseCost.toFixed(2)),
       addOns,
@@ -120,7 +120,7 @@ const calculateAddOns = (order: DeliveryOrder): number => {
 };
 
 // Helper to extract hour from time string
-const extractHour = (timeString: string): number | null => {
+const extractHour = (timeString?: string): number | null => {
   if (!timeString) return null;
   
   // Try to match various time formats
@@ -209,10 +209,10 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
       });
     }
     
-    // Issue: Missing data
+    // Issue: Missing data - downgrade to warnings as requested
     if (!order.pickup || !order.dropoff) {
       issues.push({
-        severity: 'error',
+        severity: 'warning', // Changed from 'error' to 'warning'
         orderId,
         driver: driverName,
         message: 'Missing address data',

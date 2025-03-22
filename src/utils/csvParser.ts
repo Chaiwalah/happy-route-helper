@@ -1,13 +1,13 @@
 
 export type DeliveryOrder = {
   id: string;
-  driver: string;
-  pickup: string;
-  dropoff: string;
-  timeWindowStart: string;
-  timeWindowEnd: string;
-  items: string;
-  notes: string;
+  driver?: string;
+  pickup?: string;
+  dropoff?: string;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
+  items?: string;
+  notes?: string;
   estimatedDistance?: number;
 };
 
@@ -37,13 +37,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       // Skip empty lines
       return {
         id: `order-${index + 1}`,
-        driver: '',
-        pickup: '',
-        dropoff: '',
-        timeWindowStart: '',
-        timeWindowEnd: '',
-        items: '',
-        notes: ''
       };
     }
     
@@ -52,13 +45,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     // Create object with default values for all fields
     const order: DeliveryOrder = {
       id: `order-${index + 1}`, // Add a default ID
-      driver: '',
-      pickup: '',
-      dropoff: '',
-      timeWindowStart: '',
-      timeWindowEnd: '',
-      items: '',
-      notes: ''
     };
     
     headers.forEach((header, i) => {
@@ -70,7 +56,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       }
     });
     
-    // Add a random estimated distance if not provided (and if we have pickup/dropoff data)
+    // Add a random estimated distance if not provided (and if we have any location data)
     if ((order.pickup || order.dropoff) && !order.estimatedDistance) {
       // Generate a random distance between 1 and 20 miles
       order.estimatedDistance = Math.round((1 + Math.random() * 19) * 10) / 10;

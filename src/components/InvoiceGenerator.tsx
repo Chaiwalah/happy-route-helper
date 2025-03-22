@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef } from 'react';
@@ -51,7 +52,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       toast({
         title: `${detectedIssues.length} issue${detectedIssues.length > 1 ? 's' : ''} detected`,
         description: "Check the Issues tab for details",
-        variant: "destructive",
+        variant: "warning",
       });
     } else {
       toast({
@@ -365,7 +366,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                             ${(summary.totalEarnings / summary.orderCount).toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            ${(summary.totalEarnings / summary.totalDistance).toFixed(2)}
+                            ${(summary.totalEarnings / (summary.totalDistance || 1)).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))}
