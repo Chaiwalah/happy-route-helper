@@ -34,13 +34,13 @@ export const DriverSummary: React.FC<DriverSummaryProps> = ({ invoice }) => {
             </TableHeader>
             <TableBody>
               {invoice.driverSummaries.map((summary) => (
-                <TableRow key={summary.name} className="animate-slide-in">
-                  <TableCell className="font-medium">{summary.name}</TableCell>
-                  <TableCell className="text-right">{summary.orderCount}</TableCell>
+                <TableRow key={summary.driver} className="animate-slide-in">
+                  <TableCell className="font-medium">{summary.driver}</TableCell>
+                  <TableCell className="text-right">{summary.trips}</TableCell>
                   <TableCell className="text-right">{summary.totalDistance.toFixed(1)} mi</TableCell>
                   <TableCell className="text-right font-medium">${summary.totalEarnings.toFixed(2)}</TableCell>
                   <TableCell className="text-right">
-                    ${(summary.totalEarnings / summary.orderCount).toFixed(2)}
+                    ${(summary.totalEarnings / summary.trips).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${(summary.totalEarnings / (summary.totalDistance || 1)).toFixed(2)}

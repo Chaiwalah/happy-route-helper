@@ -35,17 +35,26 @@ export interface InvoiceItem {
   details?: string;
   timestamp?: string;
   date?: string;
+  // Additional PDF fields needed
+  patientName?: string;
+  address?: string;
+  city?: string;
+  zipCode?: string;
+  pickupTime?: string;
+  deliveryTime?: string;
+  notes?: string;
 }
 
 export interface DriverSummary {
   driver: string;
-  totalOrders: number;
-  totalRoutes: number;
+  trips: number;
   totalDistance: number;
-  totalCost: number;
-  singleOrders: number;
-  multiStopRoutes: number;
-  averageStopsPerRoute: number;
+  totalEarnings: number;
+  totalOrders?: number; // For backward compatibility
+  totalRoutes?: number;
+  singleOrders?: number;
+  multiStopRoutes?: number;
+  averageStopsPerRoute?: number;
   pumpPickupCount?: number;
 }
 
@@ -73,7 +82,11 @@ export interface PDFTemplateSettings {
   companyContact: string;
   showDriverDetails: boolean;
   showItemDetails: boolean;
-  template: 'standard' | 'detailed' | 'minimal';
+  showBusinessLogo?: boolean;
+  showPatientDetails?: boolean;
+  showNotes?: boolean;
+  includeDateRange?: boolean;
+  template: 'standard' | 'detailed' | 'minimal' | 'contractor';
   color: string;
 }
 
@@ -90,4 +103,28 @@ export interface InvoiceGenerationSettings {
   flagDriverLoadThreshold: number;
   flagDistanceThreshold: number;
   flagTimeWindowThreshold: number;
+}
+
+// Add ParsedDataSummary interface that was missing
+export interface ParsedDataSummary {
+  totalOrders: number;
+  missingFields: {
+    count: number;
+    details: Record<string, number>;
+  };
+  drivers: {
+    count: number;
+    names: string[];
+  };
+  routeNumbers: {
+    count: number;
+    multiStopRoutes: number;
+    ordersWithTripNumbers: number;
+    ordersWithoutTripNumbers: number;
+  };
+  addressQuality: {
+    validPickupAddresses: number;
+    validDropoffAddresses: number;
+    missingAddresses: number;
+  };
 }

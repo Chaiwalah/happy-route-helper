@@ -48,11 +48,17 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportFormat, setExportFormat] = useState<'pdf' | 'csv' | 'excel'>('pdf');
   const [pdfSettings, setPdfSettings] = useState<PDFTemplateSettings>({
-    templateType: 'contractor',
-    showPatientDetails: true,
+    template: 'contractor',
+    showItemDetails: true,
     includeDateRange: true,
     showBusinessLogo: false,
-    showNotes: true
+    showNotes: true,
+    companyName: 'Medical Delivery Services',
+    companyAddress: '123 Main St, Anytown, USA',
+    companyContact: 'support@example.com',
+    showDriverDetails: true,
+    showPatientDetails: true,
+    color: '#4F46E5'
   });
   const [weekEnding, setWeekEnding] = useState<string>('');
   const [businessName, setBusinessName] = useState<string>('');
@@ -188,7 +194,7 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
         const link = document.createElement('a');
         
         link.setAttribute('href', url);
-        link.setAttribute('download', `invoice-${invoice.date}-${pdfSettings.templateType}.pdf`);
+        link.setAttribute('download', `invoice-${invoice.date}-${pdfSettings.template}.pdf`);
         link.style.visibility = 'hidden';
         
         document.body.appendChild(link);
@@ -422,16 +428,16 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({
                     <Label htmlFor="template">Invoice Template</Label>
                     <div className="flex mt-2 space-x-2">
                       <Button 
-                        variant={pdfSettings.templateType === 'standard' ? 'default' : 'outline'} 
+                        variant={pdfSettings.template === 'standard' ? 'default' : 'outline'} 
                         className="flex-1"
-                        onClick={() => setPdfSettings({...pdfSettings, templateType: 'standard'})}
+                        onClick={() => setPdfSettings({...pdfSettings, template: 'standard'})}
                       >
                         Standard
                       </Button>
                       <Button 
-                        variant={pdfSettings.templateType === 'contractor' ? 'default' : 'outline'} 
+                        variant={pdfSettings.template === 'contractor' ? 'default' : 'outline'} 
                         className="flex-1"
-                        onClick={() => setPdfSettings({...pdfSettings, templateType: 'contractor'})}
+                        onClick={() => setPdfSettings({...pdfSettings, template: 'contractor'})}
                       >
                         Contractor
                       </Button>
