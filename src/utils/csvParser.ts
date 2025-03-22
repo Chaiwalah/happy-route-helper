@@ -266,7 +266,7 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         missingFields.push('notes');
       }
       
-      // Check for driver
+      // Fix for driver assignment issue - preserve driver value when present
       const driver = 
         rawRow["Driver"] || 
         rawRow["Driver Name"] || 
@@ -277,9 +277,10 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       if (driver) {
         order.driver = driver;
       } else if (columnsExist.driver) {
-        // Instead of marking as missing, set as 'Unassigned'
+        // Only set as 'Unassigned' if the driver column exists but is empty
         order.driver = 'Unassigned';
-        // Don't add 'driver' to missingFields
+        // Add 'driver' to missingFields to track that it's missing
+        missingFields.push('driver');
       }
       
       // Enhanced Trip Number extraction - check each possible column name variation

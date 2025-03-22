@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 import { OrderRoute } from './invoiceTypes';
 
@@ -94,6 +93,7 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
   
   // First, group regular orders by TripNumber, driver, and date
   regularOrders.forEach(order => {
+    // Preserve the driver assignment - never default to 'Unassigned' here
     const driver = order.driver || 'Unassigned';
     // Use our safe date formatting function
     const dateStr = safeFormatDate(order.exReadyTime);
@@ -118,18 +118,19 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
       
       tripNumberIssues.push(`Order ${order.id} has ${reason}`);
       
-      // Check if we have a valid timestamp to potentially group by time window
+      // Always use the driver if assigned, even when trip number is missing
+      // Group orders by driver even when trip number is missing
       if (order.exReadyTime) {
         try {
           const readyTime = new Date(order.exReadyTime);
           if (!isNaN(readyTime.getTime())) {
-            // Since there's no valid Trip Number, treat as an individual order
+            // Create a unique route key that includes the driver
             const routeKey = `${driver}-${dateStr}-order-${order.id}`;
             routeMap.set(routeKey, [order]);
           } else {
-            // Log date parsing issues
+            // Log date parsing issues but still preserve driver assignment
             dateIssues.push(`Order ${order.id} has invalid date: "${order.exReadyTime}"`);
-            // If date parsing fails, treat as individual route
+            // If date parsing fails, treat as individual route with driver
             const routeKey = `${driver}-order-${order.id}`;
             routeMap.set(routeKey, [order]);
           }
@@ -140,7 +141,7 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
           routeMap.set(routeKey, [order]);
         }
       } 
-      // If neither TripNumber nor valid time exists, treat as individual route
+      // If neither TripNumber nor valid time exists, still use driver in route key
       else {
         const routeKey = `${driver}-order-${order.id}`;
         routeMap.set(routeKey, [order]);

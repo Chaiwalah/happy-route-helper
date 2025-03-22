@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useCallback } from 'react';
@@ -68,6 +67,15 @@ export const useOrderVerification = (
           // This fixes the case where "N/A" is a valid value but treated as missing
           updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
           console.log(`Fixed false positive: Order ${updatedOrder.id} has Trip Number "${updatedOrder.tripNumber}" but was incorrectly marked as missing`);
+        }
+        
+        // Similar check for driver - preserve actual driver values
+        if (updatedOrder.driver && updatedOrder.driver.trim() !== '' && 
+            updatedOrder.driver !== 'Unassigned' &&
+            updatedOrder.missingFields.includes('driver')) {
+          // If we have a non-empty driver but it's flagged as missing, remove it from missingFields
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'driver');
+          console.log(`Fixed false positive: Order ${updatedOrder.id} has Driver "${updatedOrder.driver}" but was incorrectly marked as missing`);
         }
         
         // Additional check for "N/A" as a trip number - mark as missing or noise
