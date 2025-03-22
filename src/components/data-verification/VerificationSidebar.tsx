@@ -8,7 +8,7 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
-interface VerificationSidebarProps {
+export interface VerificationSidebarProps {
   ordersRequiringVerification: DeliveryOrder[];
   verifiedOrders: DeliveryOrder[];
   selectedOrderIndex: number | null;
@@ -17,18 +17,18 @@ interface VerificationSidebarProps {
 }
 
 export function VerificationSidebar({
-  ordersRequiringVerification,
-  verifiedOrders,
+  ordersRequiringVerification = [],
+  verifiedOrders = [],
   selectedOrderIndex,
   onOrderSelect,
-  ordersWithTripNumberIssues
+  ordersWithTripNumberIssues = []
 }: VerificationSidebarProps) {
   return (
     <div className="col-span-1 border rounded-lg p-3 bg-muted/20">
       <h3 className="text-sm font-medium mb-2">Orders Requiring Verification</h3>
       <ScrollArea className="h-[300px]">
         <div className="space-y-2">
-          {ordersRequiringVerification.length > 0 ? (
+          {ordersRequiringVerification && ordersRequiringVerification.length > 0 ? (
             ordersRequiringVerification.map((order, index) => (
               <div 
                 key={order.id} 
@@ -41,7 +41,8 @@ export function VerificationSidebar({
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{order.id}</span>
-                  {order.missingFields.includes('tripNumber') || !order.tripNumber || order.tripNumber.trim() === '' ? (
+                  {(!order.tripNumber || order.tripNumber.trim() === '' || 
+                    (order.missingFields && order.missingFields.includes('tripNumber'))) ? (
                     <Badge variant="destructive" className="ml-2">
                       <AlertCircle className="h-3 w-3 mr-1" />
                       Missing Trip #
@@ -56,7 +57,7 @@ export function VerificationSidebar({
                 <div className="text-sm text-muted-foreground mt-1">
                   Driver: {order.driver || 'Unassigned'}
                 </div>
-                {order.missingFields.length > 0 && (
+                {order.missingFields && order.missingFields.length > 0 && (
                   <div className="mt-1 text-xs text-red-500">
                     Missing: {order.missingFields.join(', ')}
                   </div>
@@ -76,15 +77,15 @@ export function VerificationSidebar({
         <div className="text-xs text-muted-foreground mb-1">Verification summary:</div>
         <div className="flex justify-between text-sm">
           <span>Total orders:</span>
-          <span className="font-medium">{verifiedOrders.length}</span>
+          <span className="font-medium">{verifiedOrders ? verifiedOrders.length : 0}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span>Missing trip numbers:</span>
-          <span className="font-medium">{ordersWithTripNumberIssues.length}</span>
+          <span className="font-medium">{ordersWithTripNumberIssues ? ordersWithTripNumberIssues.length : 0}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span>Requiring verification:</span>
-          <span className="font-medium">{ordersRequiringVerification.length}</span>
+          <span className="font-medium">{ordersRequiringVerification ? ordersRequiringVerification.length : 0}</span>
         </div>
       </div>
     </div>
