@@ -1,21 +1,21 @@
-
 export type DeliveryOrder = {
   id: string;
   driver?: string;
   pickup?: string;
   dropoff?: string;
-  timeWindowStart?: string;
-  timeWindowEnd?: string;
-  exReadyTime?: string;      // Expected pickup time
-  exDeliveryTime?: string;   // Expected delivery time
-  actualPickupTime?: string; // Actual pickup time
-  actualDeliveryTime?: string; // Actual delivery time
+  timeWindowStart?: string;      // Expected pickup time
+  timeWindowEnd?: string;        // Expected delivery time
+  exReadyTime?: string;          // Expected pickup time
+  exDeliveryTime?: string;       // Expected delivery time
+  actualPickupTime?: string;     // Actual pickup time
+  actualDeliveryTime?: string;   // Actual delivery time
   items?: string;
   notes?: string;
-  distance?: number;         // Added distance field that might come from CSV
-  estimatedDistance?: number; // Calculated distance if not in CSV
-  missingAddress?: boolean;  // Keeping for backward compatibility
-  missingFields: string[];   // Array to track all missing fields
+  distance?: number;             // Added distance field that might come from CSV
+  estimatedDistance?: number;    // Calculated distance if not in CSV
+  missingAddress?: boolean;      // Keeping for backward compatibility
+  missingFields: string[];       // Array to track all missing fields
+  tripNumber?: string;           // Added TripNumber field for route batching
 };
 
 export const parseCSV = (content: string): DeliveryOrder[] => {
@@ -69,6 +69,9 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     ),
     driver: headers.some(header => 
       ['driver', 'driver name', 'courier'].includes(header.toLowerCase())
+    ),
+    tripNumber: headers.some(header => 
+      ['trip number', 'trip #', 'tripnumber', 'trip', 'route number', 'route #', 'route'].includes(header.toLowerCase())
     )
   };
   
@@ -260,6 +263,23 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         // Don't add 'driver' to missingFields
       }
       
+      // Check for TripNumber
+      const tripNumber = 
+        rawRow["Trip Number"] || 
+        rawRow["Trip #"] || 
+        rawRow["TripNumber"] || 
+        rawRow["Trip"] || 
+        rawRow["Route Number"] || 
+        rawRow["Route #"] || 
+        rawRow["Route"] || 
+        "";
+        
+      if (tripNumber) {
+        order.tripNumber = tripNumber;
+      } else if (columnsExist.tripNumber) {
+        missingFields.push('tripNumber');
+      }
+      
       // Set the missing fields in the order
       order.missingFields = missingFields;
       
@@ -333,6 +353,13 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'notes': 'notes',
     'special instructions': 'notes',
     'instructions': 'notes',
+    'trip number': 'tripNumber',
+    'trip #': 'tripNumber',
+    'tripnumber': 'tripNumber',
+    'trip': 'tripNumber',
+    'route number': 'tripNumber',
+    'route #': 'tripNumber',
+    'route': 'tripNumber',
   };
   
   const normalizedHeader = header.toLowerCase().trim();

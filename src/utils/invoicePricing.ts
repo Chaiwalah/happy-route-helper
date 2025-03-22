@@ -22,8 +22,8 @@ export const calculateInvoiceCosts = (routeType: 'single' | 'multi-stop', totalD
   }
   
   return {
-    baseCost,
-    addOns,
-    totalCost: baseCost + addOns
+    baseCost: parseFloat(baseCost.toFixed(2)),
+    addOns: parseFloat(addOns.toFixed(2)),
+    totalCost: parseFloat((baseCost + addOns).toFixed(2))
   };
 };
