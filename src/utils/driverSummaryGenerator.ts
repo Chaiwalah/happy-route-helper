@@ -8,15 +8,15 @@ export const generateDriverSummaries = (items: InvoiceItem[]): DriverSummary[] =
     const driver = item.driver;
     if (!driverMap.has(driver)) {
       driverMap.set(driver, {
-        name: driver,
-        orderCount: 0,
+        driver, // Use 'driver' instead of 'name' to match the DriverSummary interface
+        trips: 0, // Change 'orderCount' to 'trips' to match the interface
         totalDistance: 0,
         totalEarnings: 0
       });
     }
     
     const summary = driverMap.get(driver)!;
-    summary.orderCount += 1;
+    summary.trips += 1; // Update 'trips' instead of 'orderCount'
     summary.totalDistance += item.distance;
     summary.totalEarnings += item.totalCost || 0;
   });
