@@ -37,7 +37,7 @@ export const processOrdersForVerification = (
     const hasTripNumber = !isEmptyValue(order.tripNumber);
     const isTripNumberNoise = hasTripNumber && 
       isNoiseOrTestTripNumber(String(typeof order.tripNumber === 'object' ? 
-        order.tripNumber.value || '' : order.tripNumber || ''));
+        (order.tripNumber as any)?.value || '' : order.tripNumber || ''));
     
     // Log raw trip number for debugging
     logDebug(`Raw trip number for ${order.id}:`, {
@@ -57,9 +57,12 @@ export const processOrdersForVerification = (
     if (isEmptyValue(order.tripNumber)) {
       // If trip number is undefined, null, or an undefined object, set it to empty string
       order.tripNumber = '';
-    } else if (typeof order.tripNumber === 'object') {
-      // If it's an object, try to extract the value
-      order.tripNumber = String(order.tripNumber.value || '');
+    } else if (typeof order.tripNumber === 'object' && order.tripNumber !== null) {
+      // If it's a non-null object, try to extract the value
+      order.tripNumber = String((order.tripNumber as any).value || '');
+    } else if (order.tripNumber === null) {
+      // Explicit check for null
+      order.tripNumber = '';
     }
     
     if (hasTripNumber && !isTripNumberNoise) {
@@ -91,10 +94,13 @@ export const processOrdersForVerification = (
     if (isEmptyValue(order.driver)) {
       // If driver is undefined, null, or an undefined object, set to 'Unassigned'
       order.driver = 'Unassigned';
-    } else if (typeof order.driver === 'object') {
-      // If it's an object, try to extract the value
-      const driverValue = order.driver.value || '';
+    } else if (typeof order.driver === 'object' && order.driver !== null) {
+      // If it's a non-null object, try to extract the value
+      const driverValue = (order.driver as any).value || '';
       order.driver = driverValue === '' ? 'Unassigned' : String(driverValue);
+    } else if (order.driver === null) {
+      // Explicit check for null
+      order.driver = 'Unassigned';
     }
     
     if (hasValidDriver) {
