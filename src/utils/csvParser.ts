@@ -1,4 +1,3 @@
-
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -12,7 +11,8 @@ export type DeliveryOrder = {
   actualDeliveryTime?: string; // Actual delivery time
   items?: string;
   notes?: string;
-  estimatedDistance?: number;
+  distance?: number;         // Added distance field that might come from CSV
+  estimatedDistance?: number; // Calculated distance if not in CSV
   missingAddress?: boolean;  // Keeping for backward compatibility
   missingFields: string[];   // Array to track all missing fields
 };
@@ -40,6 +40,11 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
   // Check if specific columns exist in the CSV
   const itemsColumnExists = headers.some(header => 
     ['items', 'item description', 'items description', 'product', 'products'].includes(header.toLowerCase())
+  );
+  
+  // Check if distance column exists
+  const distanceColumnExists = headers.some(header => 
+    ['distance', 'miles', 'mileage', 'total distance'].includes(header.toLowerCase())
   );
   
   // Parse each line into an object
@@ -182,6 +187,24 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         }
       }
       
+      // Check for distance field ONLY if the column exists
+      if (distanceColumnExists) {
+        const distanceStr = 
+          rawRow["Distance"] || 
+          rawRow["Miles"] || 
+          rawRow["Mileage"] || 
+          rawRow["Total Distance"] || 
+          "";
+        
+        if (distanceStr) {
+          // Try to parse as number, removing any non-numeric chars except decimal point
+          const distanceValue = parseFloat(distanceStr.replace(/[^\d.]/g, ''));
+          if (!isNaN(distanceValue)) {
+            order.distance = distanceValue;
+          }
+        }
+      }
+      
       // Notes field
       const notes = 
         rawRow["Notes"] || 
@@ -208,12 +231,6 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       
       // Set the missing fields in the order
       order.missingFields = missingFields;
-      
-      // Add a random estimated distance if not provided (and if we have any location data)
-      if ((order.pickup || order.dropoff) && !order.estimatedDistance) {
-        // Generate a random distance between 1 and 20 miles
-        order.estimatedDistance = Math.round((1 + Math.random() * 19) * 10) / 10;
-      }
       
       return order;
     })

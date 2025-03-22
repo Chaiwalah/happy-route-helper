@@ -69,7 +69,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
         throw new Error("No valid data found in CSV file");
       }
       
-      // Calculate distances for each route
+      // Calculate distances for each route - this will use CSV distance if available
       const ordersWithDistances = await calculateDistances(parsedData);
       
       // Count orders with missing fields
@@ -178,7 +178,7 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       </div>
       
       <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        <p>Expected CSV format includes: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">Pickup Address 1, Ex. Ready Time, Ex. Delivery Time, Actual Pickup Time, Actual Delivery Time</span></p>
+        <p>Expected CSV format includes: <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">Pickup Address, Delivery Address, Ex. Ready Time, Ex. Delivery Time, Distance (optional)</span></p>
       </div>
     </div>
   );
