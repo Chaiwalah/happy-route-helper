@@ -26,11 +26,11 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-medium">Issues & Recommendations</h2>
+          <h2 className="text-xl font-medium">Data Quality Report</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {issues.length === 0 
-              ? 'No issues detected' 
-              : `${issues.length} potential issue${issues.length > 1 ? 's' : ''} detected`}
+              ? 'All orders validated successfully' 
+              : `${issues.length} potential issue${issues.length > 1 ? 's' : ''} that need review`}
           </p>
         </div>
         
@@ -67,7 +67,7 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
               </div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">All Clear</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                No issues detected with the current orders
+                All orders have been validated and are ready for invoicing
               </p>
             </div>
           </CardContent>
@@ -79,7 +79,7 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">{driver}</CardTitle>
                 <CardDescription>
-                  {driverIssues.length} issue{driverIssues.length > 1 ? 's' : ''} detected
+                  {driverIssues.length} issue{driverIssues.length > 1 ? 's' : ''} requiring attention
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">

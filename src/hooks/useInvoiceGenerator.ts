@@ -21,7 +21,7 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
   const [settings, setSettings] = useState<InvoiceGenerationSettings>({
     allowManualDistanceAdjustment: true,
     flagDriverLoadThreshold: 10,
-    flagDistanceThreshold: 150, // Updated from 50 to 150 miles
+    flagDistanceThreshold: 0, // Set to 0 to effectively disable distance-based flagging
     flagTimeWindowThreshold: 30
   });
   const [showExportDialog, setShowExportDialog] = useState(false);

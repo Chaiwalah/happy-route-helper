@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings } from './invoiceTypes';
 import { organizeOrdersIntoRoutes } from './routeOrganizer';
@@ -10,11 +11,11 @@ import { detectIssues } from './issueDetector';
 export type { Issue, InvoiceItem, DriverSummary, Invoice } from './invoiceTypes';
 export { detectIssues } from './issueDetector';
 
-// Default settings for invoice generation - updated flagDistanceThreshold to 150
+// Default settings for invoice generation - disabled distance threshold flagging
 const defaultSettings: InvoiceGenerationSettings = {
   allowManualDistanceAdjustment: true,
   flagDriverLoadThreshold: 10,
-  flagDistanceThreshold: 150, // Updated from 50 to 150 miles for statewide deliveries
+  flagDistanceThreshold: 0, // Set to 0 to effectively disable distance-based flagging
   flagTimeWindowThreshold: 30
 };
 
