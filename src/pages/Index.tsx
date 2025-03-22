@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue, detectIssues } from '@/utils/invoiceCalculator';
@@ -6,6 +5,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { DataTable } from '@/components/DataTable';
 import { InvoiceGenerator } from '@/components/InvoiceGenerator';
 import { IssueFlagging } from '@/components/IssueFlagging';
+import OrderMap from '@/components/OrderMap';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -97,7 +97,7 @@ const Index = () => {
           className="space-y-6"
         >
           <div className="backdrop-blur-sm sticky top-0 z-10 pb-4 pt-1 bg-background/95 supports-[backdrop-filter]:bg-background/60">
-            <TabsList className="grid w-full grid-cols-4 h-12">
+            <TabsList className="grid w-full grid-cols-5 h-12">
               <TabsTrigger value="upload">1. Upload CSV</TabsTrigger>
               <TabsTrigger 
                 value="orders" 
@@ -106,10 +106,16 @@ const Index = () => {
                 2. Review Orders
               </TabsTrigger>
               <TabsTrigger 
+                value="map" 
+                disabled={orders.length === 0}
+              >
+                3. Map View
+              </TabsTrigger>
+              <TabsTrigger 
                 value="invoice" 
                 disabled={orders.length === 0}
               >
-                3. Generate Invoice
+                4. Generate Invoice
               </TabsTrigger>
               <TabsTrigger 
                 value="issues" 
@@ -204,6 +210,12 @@ const Index = () => {
             
             <ScrollArea className="h-[calc(100vh-220px)]">
               <DataTable data={orders} onOrdersUpdated={handleOrdersUpdated} />
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="map" className="space-y-6">
+            <ScrollArea className="h-[calc(100vh-220px)]">
+              <OrderMap orders={orders} />
             </ScrollArea>
           </TabsContent>
           
