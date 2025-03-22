@@ -1,3 +1,4 @@
+
 export type DeliveryOrder = {
   id: string;
   driver?: string;
@@ -75,6 +76,14 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     )
   };
   
+  // Log all trip number related headers for debugging
+  const tripNumberHeaders = headers.filter(header => 
+    header && ['trip number', 'trip #', 'tripnumber', 'trip', 'route number', 'route #', 'route']
+      .includes(header.toLowerCase())
+  );
+  
+  console.log('Found trip number headers:', tripNumberHeaders);
+  
   // Parse each line into an object
   const validOrders = lines.slice(1)
     .map((line, index) => {
@@ -92,6 +101,15 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
           rawRow[header.trim()] = values[i] || '';
         }
       });
+      
+      // Log trip number values for selected orders
+      if ([16, 21, 22, 23].includes(index)) {
+        const tripNumberValues: Record<string, string> = {};
+        tripNumberHeaders.forEach(header => {
+          tripNumberValues[header] = rawRow[header] || 'N/A';
+        });
+        console.log(`CSV Row ${index + 1} (order-${index + 1}): Trip Number values:`, tripNumberValues);
+      }
       
       // Check if this is a noise row (all key fields are empty)
       const keyFields = [
@@ -263,21 +281,38 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
         // Don't add 'driver' to missingFields
       }
       
-      // Check for TripNumber
-      const tripNumber = 
-        rawRow["Trip Number"] || 
-        rawRow["Trip #"] || 
-        rawRow["TripNumber"] || 
-        rawRow["Trip"] || 
-        rawRow["Route Number"] || 
-        rawRow["Route #"] || 
-        rawRow["Route"] || 
-        "";
-        
-      if (tripNumber) {
-        order.tripNumber = tripNumber;
+      // Enhanced Trip Number extraction - check each possible column name variation
+      // Add more variations if needed based on actual CSV structure
+      const tripNumberVariations = [
+        "Trip Number", "Trip #", "TripNumber", "Trip", 
+        "Route Number", "Route #", "Route", 
+        "trip number", "trip #", "tripnumber", "trip",
+        "route number", "route #", "route", 
+        "Trip", "TRIP", "Route", "ROUTE",
+        // Add any other variations that might exist in your CSV
+      ];
+      
+      let foundTripNumber = '';
+      
+      // Check each variation of the trip number field
+      for (const tripVar of tripNumberVariations) {
+        if (rawRow[tripVar] && rawRow[tripVar].trim() !== '') {
+          foundTripNumber = rawRow[tripVar].trim();
+          break; // Stop once we find a non-empty value
+        }
+      }
+      
+      if (foundTripNumber) {
+        order.tripNumber = foundTripNumber;
+        // If this is one of our test orders, log additional details
+        if ([16, 21, 22, 23].includes(index)) {
+          console.log(`Order ${index + 1} (order-${index + 1}): Found Trip Number "${foundTripNumber}" from column`);
+        }
       } else if (columnsExist.tripNumber) {
         missingFields.push('tripNumber');
+        if ([16, 21, 22, 23].includes(index)) {
+          console.log(`Order ${index + 1} (order-${index + 1}): No Trip Number found despite column existing`);
+        }
       }
       
       // Set the missing fields in the order
@@ -365,3 +400,4 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
   const normalizedHeader = header.toLowerCase().trim();
   return headerMap[normalizedHeader] || null;
 };
+

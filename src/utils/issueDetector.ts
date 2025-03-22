@@ -24,6 +24,16 @@ export const detectIssues = (
     driverOrderCounts[driver] = (driverOrderCounts[driver] || 0) + 1;
   });
   
+  // Log specific orders for trip number verification
+  const ordersToCheck = [17, 22, 23, 24];
+  ordersToCheck.forEach(orderNum => {
+    const orderIndex = orderNum - 1; // Convert to 0-based index
+    if (orderIndex >= 0 && orderIndex < orders.length) {
+      const order = orders[orderIndex];
+      console.log(`Order ${order.id} (${orderNum}): Trip Number = "${order.tripNumber || 'N/A'}", Driver = "${order.driver || 'Unassigned'}"`);
+    }
+  });
+  
   // Check each order for potential issues - ONE issue per order with missing fields
   orders.forEach(order => {
     const driver = order.driver || 'Unassigned';
