@@ -18,6 +18,7 @@ export type DeliveryOrder = {
   tripNumber?: string;           // Added TripNumber field for route batching
   orderType?: string;            // Type of order (e.g. "PUMP_ONLY", "DELIVERY")
   isPumpPickup?: boolean;        // Flag to identify pump pickup orders
+  isNoise?: boolean;             // Flag to identify orders with noise/test trip numbers
 };
 
 /**

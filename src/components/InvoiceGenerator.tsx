@@ -17,7 +17,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
   // Mark noise orders but don't filter them out until invoice generation
   useEffect(() => {
     const markedOrders = markOrdersWithNoiseTrips(orders);
-    const noiseCount = markedOrders.filter(order => order.isNoise).length;
+    const noiseCount = markedOrders.filter(order => order.isNoise === true).length;
     
     if (noiseCount > 0) {
       toast({
