@@ -211,10 +211,16 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
   orders.forEach(order => {
     const driver = order.driver || 'Unassigned';
     
+    // Filter out 'driver' from missingFields if it's unassigned 
+    // (this is now considered a valid state, not a missing field)
+    const actualMissingFields = order.missingFields.filter(field => 
+      !(field === 'driver' && (order.driver === 'Unassigned' || !order.driver))
+    );
+    
     // Consolidate missing fields into a single issue
-    if (order.missingFields.length > 0) {
+    if (actualMissingFields.length > 0) {
       // Format the list of missing fields for human reading
-      const missingFieldsFormatted = order.missingFields
+      const missingFieldsFormatted = actualMissingFields
         .map(field => {
           switch(field) {
             case 'address': return 'delivery address';

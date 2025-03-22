@@ -255,7 +255,9 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       if (driver) {
         order.driver = driver;
       } else if (columnsExist.driver) {
-        missingFields.push('driver');
+        // Instead of marking as missing, set as 'Unassigned'
+        order.driver = 'Unassigned';
+        // Don't add 'driver' to missingFields
       }
       
       // Set the missing fields in the order
