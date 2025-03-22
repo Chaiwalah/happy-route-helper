@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue, InvoiceGenerationSettings } from '@/utils/invoiceTypes';
 import { detectIssues } from '@/utils/issueDetector';
+import { removeOrdersWithMissingTripNumbers } from '@/utils/routeOrganizer';
 import { FileUpload } from '@/components/FileUpload';
 import { DataTable } from '@/components/DataTable';
 import { InvoiceGenerator } from '@/components/InvoiceGenerator';
@@ -18,7 +19,17 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Trash2 } from 'lucide-react';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Index = () => {
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -26,6 +37,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('upload');
   const [showDataVerification, setShowDataVerification] = useState(false);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
 
   const handleDataParsed = (parsedOrders: DeliveryOrder[]) => {
     if (parsedOrders.length === 0) {
@@ -92,6 +104,44 @@ const Index = () => {
 
   const openDataVerification = () => {
     setShowDataVerification(true);
+  };
+
+  // Function to handle removing orders with missing trip numbers
+  const handleRemoveOrdersWithMissingTripNumbers = () => {
+    const ordersWithMissingTripNumbers = orders.filter(
+      order => !order.tripNumber || order.tripNumber.trim() === ''
+    );
+    
+    if (ordersWithMissingTripNumbers.length === 0) {
+      toast({
+        title: "No orders to remove",
+        description: "All orders have valid trip numbers",
+      });
+      return;
+    }
+    
+    // Show confirmation dialog
+    setShowRemoveDialog(true);
+  };
+  
+  // Function to confirm removal of orders with missing trip numbers
+  const confirmRemoveOrders = () => {
+    const originalCount = orders.length;
+    const filteredOrders = removeOrdersWithMissingTripNumbers(orders);
+    const removedCount = originalCount - filteredOrders.length;
+    
+    setOrders(filteredOrders);
+    
+    // Re-check for issues after orders are updated
+    const detectedIssues = detectIssues(filteredOrders);
+    setIssues(detectedIssues);
+    
+    setShowRemoveDialog(false);
+    
+    toast({
+      title: "Orders removed",
+      description: `Removed ${removedCount} order${removedCount !== 1 ? 's' : ''} with missing trip numbers. ${filteredOrders.length} order${filteredOrders.length !== 1 ? 's' : ''} remaining.`,
+    });
   };
 
   return (
@@ -243,14 +293,24 @@ const Index = () => {
               </div>
               
               {orders.length > 0 && (
-                <Button 
-                  onClick={openDataVerification}
-                  variant="outline"
-                  className="flex items-center gap-2"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <span>Verify Trip Numbers</span>
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleRemoveOrdersWithMissingTripNumbers}
+                    variant="destructive"
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Remove Orders with Missing Trip Numbers</span>
+                  </Button>
+                  <Button 
+                    onClick={openDataVerification}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <AlertCircle className="h-4 w-4" />
+                    <span>Verify Trip Numbers</span>
+                  </Button>
+                </div>
               )}
             </div>
             
@@ -306,6 +366,28 @@ const Index = () => {
         onOpenChange={setShowDataVerification}
         onOrdersVerified={handleOrdersUpdated}
       />
+      
+      {/* Confirmation Dialog for Removing Orders */}
+      <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Orders with Missing Trip Numbers</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove all orders that don't have a trip number assigned.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmRemoveOrders}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       
       <footer className="border-t py-6 md:py-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row">

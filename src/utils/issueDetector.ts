@@ -110,6 +110,22 @@ export const detectIssues = (
     }
   });
   
+  // Count orders with missing trip numbers
+  const ordersWithMissingTripNumbers = orders.filter(
+    order => !order.tripNumber || order.tripNumber.trim() === ''
+  ).length;
+  
+  // Add a global issue if there are orders with missing trip numbers
+  if (ordersWithMissingTripNumbers > 0) {
+    issues.push({
+      orderId: 'multiple',
+      driver: 'All',
+      message: 'Orders with missing trip numbers',
+      details: `There are ${ordersWithMissingTripNumbers} orders with missing trip numbers. Consider removing them using the 'Remove Orders with Missing Trip Numbers' button.`,
+      severity: 'warning'
+    });
+  }
+  
   // Check for drivers with high load (more than threshold orders)
   Object.entries(driverOrderCounts).forEach(([driver, count]) => {
     if (count > effectiveSettings.flagDriverLoadThreshold && driver !== 'Unassigned') {

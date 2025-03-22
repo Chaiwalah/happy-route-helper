@@ -81,3 +81,15 @@ export const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): OrderRoute[] 
   
   return routes;
 };
+
+// New function to filter out orders with missing trip numbers
+export const removeOrdersWithMissingTripNumbers = (orders: DeliveryOrder[]): DeliveryOrder[] => {
+  const filteredOrders = orders.filter(order => order.tripNumber && order.tripNumber.trim() !== '');
+  
+  const removedCount = orders.length - filteredOrders.length;
+  if (removedCount > 0) {
+    console.log(`Removed ${removedCount} orders with missing trip numbers`);
+  }
+  
+  return filteredOrders;
+};
