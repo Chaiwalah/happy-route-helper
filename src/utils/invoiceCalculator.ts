@@ -44,17 +44,17 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
       const pickup = order.pickup || 'Unknown location';
       const dropoff = order.dropoff || 'Unknown location';
       
-      // Get individual order distance, default to 0 if not available
-      const orderDistance = order.estimatedDistance || 0;
+      // Use the route's total distance for all orders in a multi-stop route
+      // For single orders, use the individual order's estimated distance
+      const displayDistance = routeType === 'multi-stop' ? totalDistance : (order.estimatedDistance || 0);
       
       // For multi-stop routes, show the full route cost on each order
-      // No more cost distribution among orders
       items.push({
         orderId: order.id,
         driver,
         pickup,
         dropoff,
-        distance: orderDistance,
+        distance: displayDistance,
         stops,
         routeType,
         baseCost: baseCost,
