@@ -11,8 +11,6 @@ import {
   CardTitle 
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DeliveryOrder } from '@/utils/csvParser';
@@ -24,8 +22,6 @@ interface InvoiceGeneratorProps {
 }
 
 export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
-  const [ratePerMile, setRatePerMile] = useState(1.5);
-  const [baseRate, setBaseRate] = useState(10);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const invoiceRef = useRef<HTMLDivElement>(null);
@@ -40,8 +36,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
       return;
     }
     
-    // Generate invoice with current rates
-    const generatedInvoice = generateInvoice(orders, ratePerMile, baseRate);
+    // Generate invoice using the new billing logic
+    const generatedInvoice = generateInvoice(orders);
     setInvoice(generatedInvoice);
     
     // Detect any potential issues
@@ -74,7 +70,7 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
     
     try {
       // Prepare CSV content
-      const headers = ['Order ID', 'Driver', 'Pickup', 'Dropoff', 'Distance (mi)', 'Base Cost ($)', 'Add-ons ($)', 'Total ($)'];
+      const headers = ['Order ID', 'Driver', 'Pickup', 'Dropoff', 'Distance (mi)', 'Route Type', 'Stops', 'Base Cost ($)', 'Add-ons ($)', 'Total ($)'];
       
       const rows = invoice.items.map(item => [
         item.orderId,
@@ -82,6 +78,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
         item.pickup,
         item.dropoff,
         item.distance.toFixed(1),
+        item.routeType,
+        item.stops,
         item.baseCost.toFixed(2),
         item.addOns.toFixed(2),
         item.totalCost.toFixed(2)
@@ -94,6 +92,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
         '',
         '',
         invoice.totalDistance.toFixed(1),
+        '',
+        '',
         '',
         '',
         invoice.totalCost.toFixed(2)
@@ -223,32 +223,30 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="base-rate">Base Rate ($)</Label>
-          <Input
-            id="base-rate"
-            type="number"
-            min="0"
-            step="0.5"
-            value={baseRate}
-            onChange={(e) => setBaseRate(parseFloat(e.target.value))}
-            className="w-32"
-          />
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-medium">Advanced Billing System</h3>
+          <p className="text-sm text-muted-foreground">
+            Pricing automatically calculated based on route type and distance
+          </p>
+          
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="p-3 border rounded-md bg-background">
+              <div className="font-semibold mb-1">Single-Order Under 25 Miles</div>
+              <div>Flat rate of $25</div>
+            </div>
+            <div className="p-3 border rounded-md bg-background">
+              <div className="font-semibold mb-1">Single-Order Over 25 Miles</div>
+              <div>$1.10 per mile (one-way)</div>
+            </div>
+            <div className="p-3 border rounded-md bg-background">
+              <div className="font-semibold mb-1">Multi-Stop Routes</div>
+              <div>$1.10 per mile + $12 per additional stop</div>
+            </div>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="rate-per-mile">Rate per Mile ($)</Label>
-          <Input
-            id="rate-per-mile"
-            type="number"
-            min="0"
-            step="0.1"
-            value={ratePerMile}
-            onChange={(e) => setRatePerMile(parseFloat(e.target.value))}
-            className="w-32"
-          />
-        </div>
-        <Button onClick={handleGenerateInvoice} className="ml-auto">
+        
+        <Button onClick={handleGenerateInvoice}>
           Generate Invoice
         </Button>
       </div>
@@ -290,6 +288,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                         <TableHead>Driver</TableHead>
                         <TableHead>Route</TableHead>
                         <TableHead className="text-right">Distance</TableHead>
+                        <TableHead className="text-right">Route Type</TableHead>
+                        <TableHead className="text-right">Stops</TableHead>
                         <TableHead className="text-right">Base</TableHead>
                         <TableHead className="text-right">Add-ons</TableHead>
                         <TableHead className="text-right">Total</TableHead>
@@ -305,6 +305,8 @@ export function InvoiceGenerator({ orders }: InvoiceGeneratorProps) {
                             <div className="truncate text-muted-foreground text-xs mt-1">to: {item.dropoff}</div>
                           </TableCell>
                           <TableCell className="text-right">{item.distance.toFixed(1)} mi</TableCell>
+                          <TableCell className="text-right capitalize">{item.routeType}</TableCell>
+                          <TableCell className="text-right">{item.stops}</TableCell>
                           <TableCell className="text-right">${item.baseCost.toFixed(2)}</TableCell>
                           <TableCell className="text-right">${item.addOns.toFixed(2)}</TableCell>
                           <TableCell className="text-right font-medium">${item.totalCost.toFixed(2)}</TableCell>

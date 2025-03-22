@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 
 export type Issue = {
@@ -15,6 +14,8 @@ export type InvoiceItem = {
   pickup: string;
   dropoff: string;
   distance: number;
+  stops: number;
+  routeType: 'single' | 'multi-stop';
   baseCost: number;
   addOns: number;
   totalCost: number;
@@ -35,54 +36,113 @@ export type Invoice = {
   driverSummaries: DriverSummary[];
 };
 
-export const generateInvoice = (
-  orders: DeliveryOrder[], 
-  ratePerMile: number, 
-  baseRate: number
-): Invoice => {
+// Helper function to process orders into routes
+const organizeOrdersIntoRoutes = (orders: DeliveryOrder[]): Map<string, DeliveryOrder[]> => {
+  // Group orders by driver and day
+  const routes = new Map<string, DeliveryOrder[]>();
+  
+  orders.forEach(order => {
+    const driver = order.driver || 'Unassigned';
+    
+    // Extract delivery date (or use current date if missing)
+    let deliveryDate = 'unknown-date';
+    
+    if (order.exDeliveryTime) {
+      // Try to extract date from expected delivery time
+      try {
+        const dateObj = new Date(order.exDeliveryTime);
+        deliveryDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
+      } catch (e) {
+        // If parsing fails, use the string directly
+        deliveryDate = order.exDeliveryTime.split(' ')[0]; // Take first part as date
+      }
+    }
+    
+    // Create a route key combining driver and date
+    const routeKey = `${driver}-${deliveryDate}`;
+    
+    // Add order to the appropriate route
+    if (!routes.has(routeKey)) {
+      routes.set(routeKey, []);
+    }
+    
+    routes.get(routeKey)!.push(order);
+  });
+  
+  return routes;
+};
+
+export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
   // Format date for invoice 
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
-  // Create invoice items for each order
-  const items: InvoiceItem[] = orders.map(order => {
-    const driver = order.driver || 'Unassigned';
-    const pickup = order.pickup || 'Unknown location';
-    const dropoff = order.dropoff || 'Unknown location';
+  // Organize orders into routes by driver and date
+  const routes = organizeOrdersIntoRoutes(orders);
+  
+  // Create invoice items based on routes
+  const items: InvoiceItem[] = [];
+  
+  // Process each route
+  routes.forEach((routeOrders, routeKey) => {
+    // Calculate total route distance - use the maximum estimated distance
+    // as a simplification (in a real system, you'd calculate the optimal route)
+    const totalDistance = Math.max(...routeOrders.map(order => order.estimatedDistance || 0));
     
-    // Get distance, default to 0 if not available
-    const distance = order.estimatedDistance || 0;
+    // Determine if it's a single order or multi-stop route
+    const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
+    const stops = routeOrders.length;
     
-    // Calculate costs
-    const baseCost = baseRate;
-    const distanceCost = distance * ratePerMile;
-    
-    // Additional costs (can be expanded later)
+    // Apply billing logic
+    let routeCost = 0;
+    let baseCost = 0;
     let addOns = 0;
     
-    // Add a single surcharge based on the number of missing fields
-    if (order.missingFields.length > 0) {
-      // Base surcharge of $5 for any missing fields
-      addOns += 5;
-      
-      // Add $0.50 for each additional missing field beyond the first
-      if (order.missingFields.length > 1) {
-        addOns += (order.missingFields.length - 1) * 0.50;
+    if (routeType === 'single') {
+      // Single-order under 25 miles: flat $25
+      if (totalDistance < 25) {
+        baseCost = 25;
+      } 
+      // Single-order over 25 miles: $1.10 per mile
+      else {
+        baseCost = totalDistance * 1.10;
       }
+      routeCost = baseCost;
+    } else {
+      // Multi-stop routes: (total mileage × $1.10) + $12 for each extra stop
+      baseCost = totalDistance * 1.10;
+      addOns = (stops - 1) * 12;
+      routeCost = baseCost + addOns;
     }
     
-    const totalCost = baseCost + distanceCost + addOns;
-    
-    return {
-      orderId: order.id,
-      driver,
-      pickup,
-      dropoff,
-      distance,
-      baseCost: baseCost + distanceCost, // Base + distance cost
-      addOns,
-      totalCost
-    };
+    // Create an invoice item for each order in the route
+    routeOrders.forEach(order => {
+      const driver = order.driver || 'Unassigned';
+      const pickup = order.pickup || 'Unknown location';
+      const dropoff = order.dropoff || 'Unknown location';
+      
+      // Get individual order distance, default to 0 if not available
+      const orderDistance = order.estimatedDistance || 0;
+      
+      // For the invoice, we need to distribute the route cost among orders
+      // Simplest approach: divide equally among all orders in the route
+      const orderCost = routeCost / stops;
+      
+      // Keep track of missing fields but don't add surcharges - that's no longer part of the billing logic
+      
+      items.push({
+        orderId: order.id,
+        driver,
+        pickup,
+        dropoff,
+        distance: orderDistance,
+        stops,
+        routeType,
+        baseCost: baseCost / stops, // Distribute base cost equally
+        addOns: addOns / stops,     // Distribute add-ons equally
+        totalCost: orderCost
+      });
+    });
   });
   
   // Calculate totals
