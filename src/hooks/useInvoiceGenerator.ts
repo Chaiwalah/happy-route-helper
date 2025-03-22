@@ -45,14 +45,22 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
     }
     
     setIsGenerating(true);
-    toast({
+    
+    // Show a toast to indicate that generation has started
+    const toastId = toast({
       title: "Generating invoice",
-      description: "Grouping orders by Trip Number and calculating routes...",
+      description: `Calculating routes for ${orders.length} orders. This may take a moment for larger datasets...`,
     });
+    
+    const startTime = performance.now();
+    console.log(`Starting invoice generation for ${orders.length} orders`);
     
     try {
       // Generate invoice with proper route batching by Trip Number
       const generatedInvoice = await generateInvoice(orders, settings);
+      
+      const endTime = performance.now();
+      console.log(`Invoice generation completed in ${((endTime - startTime) / 1000).toFixed(2)} seconds`);
       
       // Enhance invoice with metadata from invoice settings
       const enhancedInvoice = {

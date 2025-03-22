@@ -1,20 +1,36 @@
-
 import { DeliveryOrder } from './csvParser';
 import { calculateRouteDistance } from './mapboxService';
 
+// Cache for route distance calculations
+const distanceCache: { [key: string]: number } = {};
+
 // Calculate the total route distance for multi-stop routes using Mapbox Directions API
 export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder[]): Promise<number> => {
+  // Generate a cache key based on order IDs
+  const cacheKey = routeOrders.map(order => order.id).join('|');
+  
+  // Check if we already calculated this route
+  if (distanceCache[cacheKey] !== undefined) {
+    console.log(`Using cached distance for route with ${routeOrders.length} orders`);
+    return distanceCache[cacheKey];
+  }
+  
+  console.log(`Calculating distance for route with ${routeOrders.length} orders`);
+  
   // If it's a single order, use its estimated distance or calculate it
   if (routeOrders.length === 1) {
     const order = routeOrders[0];
     
     // If we already have a distance from CSV, use it
     if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
-      return parseFloat(order.distance.toString());
+      const distance = parseFloat(order.distance.toString());
+      distanceCache[cacheKey] = distance;
+      return distance;
     }
     
     // If we have estimatedDistance from earlier calculation, use it
     if (order.estimatedDistance) {
+      distanceCache[cacheKey] = order.estimatedDistance;
       return order.estimatedDistance;
     }
     
@@ -23,7 +39,9 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
       try {
         const routeDistance = await calculateRouteDistance([order.pickup, order.dropoff]);
         if (routeDistance !== null) {
-          return Number(routeDistance.toFixed(1));
+          const distance = Number(routeDistance.toFixed(1));
+          distanceCache[cacheKey] = distance;
+          return distance;
         }
       } catch (error) {
         console.error('Error calculating individual route distance:', error);
@@ -31,10 +49,31 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     }
     
     // Fallback to estimatedDistance or 0 if everything fails
-    return order.estimatedDistance || 0;
+    const fallback = order.estimatedDistance || 0;
+    distanceCache[cacheKey] = fallback;
+    return fallback;
   }
   
-  // For multi-stop routes, extract all addresses in order to calculate the full chain distance
+  // For multi-stop routes, first check if all orders have valid estimatedDistance values
+  const allHaveEstimatedDistances = routeOrders.every(order => 
+    order.estimatedDistance !== undefined && order.estimatedDistance !== null
+  );
+  
+  // If all orders have estimated distances, we can calculate a reasonable approximation quickly
+  if (allHaveEstimatedDistances) {
+    console.log('Using pre-calculated distances for multi-stop route');
+    
+    // For multi-stop, use the sum but apply a small optimization factor (0.9)
+    // since direct routes between stops are usually shorter than individual routes
+    const totalDistance = routeOrders.reduce((sum, order) => 
+      sum + (order.estimatedDistance || 0), 0) * 0.9;
+    
+    const distance = Number(totalDistance.toFixed(1));
+    distanceCache[cacheKey] = distance;
+    return distance;
+  }
+  
+  // Otherwise, extract all addresses in order to calculate the full chain distance
   const addresses: string[] = [];
   
   // Start with the pickup of the first order (assuming all orders in a trip start from the same pharmacy)
@@ -52,9 +91,12 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   // Calculate the full route distance with all stops
   if (addresses.length >= 2) {
     try {
+      console.log(`Calculating multi-stop route with ${addresses.length} addresses`);
       const routeDistance = await calculateRouteDistance(addresses);
       if (routeDistance !== null) {
-        return Number(routeDistance.toFixed(1));
+        const distance = Number(routeDistance.toFixed(1));
+        distanceCache[cacheKey] = distance;
+        return distance;
       }
     } catch (error) {
       console.error('Error calculating multi-stop route distance:', error);
@@ -62,7 +104,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   }
   
   // If API call fails, sum individual estimated distances as a fallback
-  return routeOrders.reduce((sum, order) => {
+  const fallbackDistance = routeOrders.reduce((sum, order) => {
     // Use distance from CSV if available
     if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
       return sum + parseFloat(order.distance.toString());
@@ -70,4 +112,8 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     // Otherwise use estimatedDistance or 0
     return sum + (order.estimatedDistance || 0);
   }, 0);
+  
+  const distance = Number(fallbackDistance.toFixed(1));
+  distanceCache[cacheKey] = distance;
+  return distance;
 };

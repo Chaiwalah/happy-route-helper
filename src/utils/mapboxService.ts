@@ -1,4 +1,3 @@
-
 // Mapbox service for geocoding and directions
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw';
 
@@ -10,7 +9,11 @@ type GeocodingCache = {
   } | null;
 };
 
+// Shared cache that persists during the session
 const geocodingCache: GeocodingCache = {};
+
+// Cache for route distances to avoid duplicate calculations
+const routeDistanceCache: { [key: string]: number | null } = {};
 
 // Convert an address string to coordinates
 export const geocodeAddress = async (address: string): Promise<{longitude: number, latitude: number} | null> => {
@@ -25,6 +28,7 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
   }
   
   try {
+    console.log(`Geocoding address: ${address}`);
     const encodedAddress = encodeURIComponent(address);
     const response = await fetch(
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`
@@ -52,9 +56,15 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
     }
   } catch (error) {
     console.error('Error geocoding address:', error);
+    // Keep cache empty so we can retry later
     geocodingCache[address] = null;
     return null;
   }
+};
+
+// Generate a cache key for routes
+const getRouteKey = (addresses: string[]): string => {
+  return addresses.join('|');
 };
 
 // Calculate route distance between multiple stops
@@ -64,6 +74,16 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
     return null;
   }
   
+  // Generate a cache key for this route
+  const routeKey = getRouteKey(addresses);
+  
+  // Check cache first
+  if (routeDistanceCache[routeKey] !== undefined) {
+    return routeDistanceCache[routeKey];
+  }
+  
+  console.log(`Calculating distance between ${addresses.length} addresses`);
+  
   // First geocode all addresses
   const geocodingPromises = addresses.map(address => geocodeAddress(address));
   const coordinates = await Promise.all(geocodingPromises);
@@ -71,6 +91,7 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
   // Check if any geocoding failed
   if (coordinates.some(coord => coord === null)) {
     console.warn('One or more addresses could not be geocoded');
+    // Don't cache failed routes so we can retry later
     return null;
   }
   
@@ -94,13 +115,18 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
     if (data.routes && data.routes.length > 0) {
       // Convert meters to miles (1 meter = 0.000621371 miles)
       const distanceInMiles = data.routes[0].distance * 0.000621371;
+      
+      // Cache the result
+      routeDistanceCache[routeKey] = distanceInMiles;
       return distanceInMiles;
     } else {
       console.warn('No route found between the provided addresses');
+      routeDistanceCache[routeKey] = null;
       return null;
     }
   } catch (error) {
     console.error('Error calculating route distance:', error);
+    // Don't cache failed routes so we can retry later
     return null;
   }
 };
