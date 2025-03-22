@@ -38,33 +38,55 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     // Apply billing logic with correct formulas
     const { baseCost, addOns, totalCost } = calculateInvoiceCosts(routeType, totalDistance, stops);
     
-    // Create invoice items for each order in the route
-    routeOrders.forEach(order => {
+    // For multi-stop routes, create a single invoice item for the entire route
+    if (routeType === 'multi-stop') {
+      // Concatenate all order IDs into a single string
+      const combinedOrderId = routeOrders.map(order => order.id).join(', ');
+      const driver = routeOrders[0].driver || 'Unassigned';
+      
+      // Combine pickup/dropoff locations for display
+      const pickupLocations = [...new Set(routeOrders.map(order => order.pickup || 'Unknown'))];
+      const dropoffLocations = [...new Set(routeOrders.map(order => order.dropoff || 'Unknown'))];
+      
+      const pickup = pickupLocations.join(' → ');
+      const dropoff = dropoffLocations.join(' → ');
+      
+      // Create a single invoice item for the entire route
+      items.push({
+        orderId: combinedOrderId,
+        driver,
+        pickup,
+        dropoff,
+        distance: totalDistance,
+        stops,
+        routeType,
+        baseCost,
+        addOns,
+        totalCost
+      });
+    } else {
+      // For single orders, create an invoice item for the individual order
+      const order = routeOrders[0];
       const driver = order.driver || 'Unassigned';
       const pickup = order.pickup || 'Unknown location';
       const dropoff = order.dropoff || 'Unknown location';
       
-      // Use the route's total distance for all orders in a multi-stop route
-      // For single orders, use the individual order's estimated distance
-      const displayDistance = routeType === 'multi-stop' ? totalDistance : (order.estimatedDistance || 0);
-      
-      // For multi-stop routes, show the full route cost on each order
       items.push({
         orderId: order.id,
         driver,
         pickup,
         dropoff,
-        distance: displayDistance,
-        stops,
-        routeType,
-        baseCost: baseCost,
-        addOns: addOns,
-        totalCost: totalCost
+        distance: totalDistance,
+        stops: 1,
+        routeType: 'single',
+        baseCost,
+        addOns,
+        totalCost
       });
-    });
+    }
   }
   
-  // Calculate totals
+  // Calculate totals (no duplicated costs since each route is represented by a single item)
   const totalDistance = items.reduce((sum, item) => sum + item.distance, 0);
   const totalCost = items.reduce((sum, item) => sum + item.totalCost, 0);
   

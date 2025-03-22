@@ -184,7 +184,7 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
           </div>
         </CardTitle>
         <CardDescription>
-          {invoice.items.length} orders, {invoice.totalDistance.toFixed(1)} miles total
+          {invoice.items.length} routes, {invoice.totalDistance.toFixed(1)} miles total
         </CardDescription>
       </CardHeader>
       <CardContent ref={invoiceRef}>
@@ -192,7 +192,7 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
           <Table>
             <TableHeader className="bg-gray-50/80 dark:bg-gray-900/50">
               <TableRow>
-                <TableHead className="w-[80px]">Order ID</TableHead>
+                <TableHead className="w-[100px]">Order ID(s)</TableHead>
                 <TableHead>Driver</TableHead>
                 <TableHead>Route</TableHead>
                 <TableHead className="text-right">Distance</TableHead>
@@ -206,7 +206,12 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
             <TableBody>
               {invoice.items.map((item) => (
                 <TableRow key={item.orderId} className="animate-slide-in">
-                  <TableCell className="font-mono text-xs">{item.orderId}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {item.orderId.includes(', ') 
+                      ? <span title={item.orderId}>{item.orderId.split(', ').length} orders</span>
+                      : item.orderId
+                    }
+                  </TableCell>
                   <TableCell>{item.driver}</TableCell>
                   <TableCell className="max-w-[300px]">
                     <div className="truncate">{item.pickup}</div>
