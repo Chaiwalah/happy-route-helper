@@ -94,7 +94,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
     const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
     const stops = routeOrders.length;
     
-    // Apply billing logic with CORRECT formulas
+    // Apply billing logic with correct formulas
     let baseCost = 0;
     let addOns = 0;
     
@@ -102,10 +102,12 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       // Single-order under 25 miles: flat $25
       if (totalDistance < 25) {
         baseCost = 25;
+        addOns = 0;
       } 
       // Single-order over 25 miles: $1.10 per mile
       else {
         baseCost = totalDistance * 1.10;
+        addOns = 0;
       }
     } else {
       // Multi-stop routes: (total mileage × $1.10) + $12 for each extra stop
@@ -124,7 +126,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
       // Get individual order distance, default to 0 if not available
       const orderDistance = order.estimatedDistance || 0;
       
-      // Distribute the costs among orders
+      // Distribute the costs evenly among orders in the route
       const perOrderBaseCost = baseCost / stops;
       const perOrderAddOns = addOns / stops;
       const perOrderCost = routeCost / stops;
