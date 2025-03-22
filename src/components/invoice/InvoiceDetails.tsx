@@ -4,7 +4,7 @@ import React, { useRef, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Invoice } from '@/utils/invoiceCalculator';
+import { Invoice } from '@/utils/invoiceTypes';
 import { toast } from '@/components/ui/use-toast';
 import { 
   CalculatorIcon, 

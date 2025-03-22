@@ -1,4 +1,3 @@
-
 import { DeliveryOrder } from './csvParser';
 import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings, DriverSummary } from './invoiceTypes';
 import { organizeOrdersIntoRoutes, removeOrdersWithNoiseTrips } from './routeOrganizer';

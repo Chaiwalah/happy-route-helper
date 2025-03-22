@@ -1,11 +1,9 @@
 import { useState, useCallback } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
+import { generateInvoice } from '@/utils/invoiceCalculator';
 import { 
-  generateInvoice as calculateInvoice, 
   Invoice, 
-  InvoiceItem 
-} from '@/utils/invoiceCalculator';
-import { 
+  InvoiceItem,
   InvoiceGenerationSettings,
   InvoiceMetadata 
 } from '@/utils/invoiceTypes';
@@ -71,7 +69,7 @@ export const useInvoiceGenerator = (orders: DeliveryOrder[]) => {
       };
       
       // Generate invoice with progress updates
-      const newInvoice = await calculateInvoice(orders, settings, updateProgress);
+      const newInvoice = await generateInvoice(orders, settings, updateProgress);
       setInvoice(newInvoice);
       
       // Reset progress
