@@ -5,10 +5,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DeliveryOrder } from '@/utils/csvParser';
-import { 
-  Invoice, 
-  Issue
-} from '@/utils/invoiceCalculator';
+import { Invoice, Issue } from '@/utils/invoiceTypes';
 import PricingInfo from '@/components/invoice/PricingInfo';
 import { InvoiceDetails } from '@/components/invoice/InvoiceDetails';
 import { DriverSummary } from '@/components/invoice/DriverSummary';
@@ -127,9 +124,25 @@ export function InvoiceGeneratorMain({ orders }: InvoiceGeneratorProps) {
       <DistanceRecalculationDialog 
         open={itemToRecalculate !== null}
         onOpenChange={(open) => !open && setItemToRecalculate(null)}
-        itemToRecalculate={itemToRecalculate}
-        onItemToRecalculateChange={setItemToRecalculate}
-        onConfirm={confirmRecalculation}
+        itemToRecalculate={itemToRecalculate ? {
+          index: itemToRecalculate.index,
+          distance: itemToRecalculate.currentDistance
+        } : null}
+        onItemToRecalculateChange={(item) => {
+          if (item) {
+            setItemToRecalculate({
+              index: item.index,
+              currentDistance: item.distance
+            });
+          } else {
+            setItemToRecalculate(null);
+          }
+        }}
+        onConfirm={() => {
+          if (itemToRecalculate) {
+            confirmRecalculation(itemToRecalculate.index, itemToRecalculate.currentDistance);
+          }
+        }}
       />
       
       <ExportDialog 

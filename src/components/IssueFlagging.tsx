@@ -3,7 +3,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Issue } from '@/utils/invoiceCalculator';
+import { Issue } from '@/utils/invoiceTypes';
 
 interface IssueFlaggingProps {
   issues: Issue[];
@@ -12,15 +12,16 @@ interface IssueFlaggingProps {
 export function IssueFlagging({ issues }: IssueFlaggingProps) {
   // Group issues by driver for better organization
   const issuesByDriver = issues.reduce((groups, issue) => {
-    if (!groups[issue.driver]) {
-      groups[issue.driver] = [];
+    const driver = issue.driver || 'Unspecified';
+    if (!groups[driver]) {
+      groups[driver] = [];
     }
-    groups[issue.driver].push(issue);
+    groups[driver].push(issue);
     return groups;
   }, {} as Record<string, Issue[]>);
   
-  const errorCount = issues.filter(issue => issue.severity === 'error').length;
-  const warningCount = issues.filter(issue => issue.severity === 'warning').length;
+  const errorCount = issues.filter(issue => issue.severity === 'error' || issue.type === 'error').length;
+  const warningCount = issues.filter(issue => issue.severity === 'warning' || issue.type === 'warning').length;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -88,7 +89,7 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
                     <div 
                       key={`${issue.orderId}-${index}`}
                       className={`p-4 ${
-                        issue.severity === 'error' 
+                        (issue.severity === 'error' || issue.type === 'error')
                           ? 'bg-red-50/50 dark:bg-red-900/10' 
                           : index % 2 === 0 ? 'bg-amber-50/30 dark:bg-amber-900/5' : 'bg-amber-50/60 dark:bg-amber-900/10'
                       }`}
@@ -96,7 +97,7 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="flex items-center">
-                            {issue.severity === 'error' ? (
+                            {(issue.severity === 'error' || issue.type === 'error') ? (
                               <svg 
                                 xmlns="http://www.w3.org/2000/svg" 
                                 className="h-5 w-5 text-red-500 mr-1.5" 
@@ -116,7 +117,7 @@ export function IssueFlagging({ issues }: IssueFlaggingProps) {
                               </svg>
                             )}
                             <span className={`font-medium ${
-                              issue.severity === 'error' ? 'text-red-800 dark:text-red-400' : 'text-amber-800 dark:text-amber-400'
+                              (issue.severity === 'error' || issue.type === 'error') ? 'text-red-800 dark:text-red-400' : 'text-amber-800 dark:text-amber-400'
                             }`}>
                               {issue.message}
                             </span>

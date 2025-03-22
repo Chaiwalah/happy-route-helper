@@ -33,14 +33,14 @@ export function InvoiceSettings({ settings, onSettingsChange }: InvoiceSettingsP
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="driver-threshold" className="text-xs">Driver load threshold</Label>
-              <span className="text-xs font-mono">{settings.flagDriverLoadThreshold} orders</span>
+              <span className="text-xs font-mono">{settings.flagDriverLoadThreshold || 10} orders</span>
             </div>
             <Slider 
               id="driver-threshold"
               min={5}
               max={20}
               step={1}
-              value={[settings.flagDriverLoadThreshold]}
+              value={[settings.flagDriverLoadThreshold || 10]}
               onValueChange={(value) => onSettingsChange({ 
                 ...settings, 
                 flagDriverLoadThreshold: value[0] 
@@ -51,17 +51,17 @@ export function InvoiceSettings({ settings, onSettingsChange }: InvoiceSettingsP
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="distance-threshold" className="text-xs">Distance warning threshold</Label>
-              <span className="text-xs font-mono">{settings.flagDistanceThreshold} miles</span>
+              <span className="text-xs font-mono">{settings.distanceThreshold} miles</span>
             </div>
             <Slider 
               id="distance-threshold"
               min={50}
               max={200}
               step={10}
-              value={[settings.flagDistanceThreshold]}
+              value={[settings.distanceThreshold]}
               onValueChange={(value) => onSettingsChange({ 
                 ...settings, 
-                flagDistanceThreshold: value[0] 
+                distanceThreshold: value[0] 
               })}
             />
           </div>
@@ -69,14 +69,14 @@ export function InvoiceSettings({ settings, onSettingsChange }: InvoiceSettingsP
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="time-threshold" className="text-xs">Time window threshold</Label>
-              <span className="text-xs font-mono">{settings.flagTimeWindowThreshold} min</span>
+              <span className="text-xs font-mono">{settings.flagTimeWindowThreshold || 30} min</span>
             </div>
             <Slider 
               id="time-threshold"
               min={15}
               max={60}
               step={5}
-              value={[settings.flagTimeWindowThreshold]}
+              value={[settings.flagTimeWindowThreshold || 30]}
               onValueChange={(value) => onSettingsChange({ 
                 ...settings, 
                 flagTimeWindowThreshold: value[0] 

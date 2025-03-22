@@ -30,7 +30,7 @@ export const generatePdfInvoice = async (
       DELIVERIES
       ==========================
       ${invoice.items.map((item, index) => `
-        #${index + 1}: ${item.orderId || item.orderIds.join(',')}
+        #${index + 1}: ${item.orderId || (item.orderIds ? item.orderIds.join(',') : '')}
         Patient: ${item.patientName || 'N/A'}
         Address: ${item.address || item.dropoff || 'N/A'}
         City/Zip: ${item.city || 'N/A'} ${item.zipCode || 'N/A'}

@@ -5,7 +5,6 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Invoice, PDFTemplateSettings } from '@/utils/invoiceTypes';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDate } from '@/utils/dateFormatter';
 
 interface PDFPreviewProps {
   invoice: Invoice;

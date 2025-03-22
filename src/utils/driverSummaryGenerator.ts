@@ -1,5 +1,5 @@
 
-import { InvoiceItem, DriverSummary } from './invoiceTypes';
+import { DriverSummary, InvoiceItem } from './invoiceTypes';
 
 export const generateDriverSummaries = (items: InvoiceItem[]): DriverSummary[] => {
   const driverMap = new Map<string, DriverSummary>();

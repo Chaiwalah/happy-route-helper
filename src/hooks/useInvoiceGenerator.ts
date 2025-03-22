@@ -1,8 +1,7 @@
-
 import { useState, useCallback } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { 
-  calculateInvoice, 
+  generateInvoice as calculateInvoice, 
   Invoice, 
   InvoiceItem 
 } from '@/utils/invoiceCalculator';
@@ -27,6 +26,9 @@ export const useInvoiceGenerator = (orders: DeliveryOrder[]) => {
     applyRushFee: false,
     rushFeePercentage: 15,
     calculateTotalMileage: true,
+    flagDriverLoadThreshold: 10,
+    flagDistanceThreshold: 100,
+    flagTimeWindowThreshold: 30,
   });
   const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [showExportDialog, setShowExportDialog] = useState(false);

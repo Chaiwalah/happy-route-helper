@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Issue } from '@/utils/invoiceCalculator';
+import { Issue } from '@/utils/invoiceTypes';
 
 interface IssuesListProps {
   issues: Issue[];
@@ -11,8 +11,8 @@ interface IssuesListProps {
 
 export const IssuesList: React.FC<IssuesListProps> = ({ issues }) => {
   // Group issues by severity for better organization
-  const errorIssues = issues.filter(issue => issue.severity === 'error');
-  const warningIssues = issues.filter(issue => issue.severity === 'warning');
+  const errorIssues = issues.filter(issue => issue.severity === 'error' || issue.type === 'error');
+  const warningIssues = issues.filter(issue => issue.severity === 'warning' || issue.type === 'warning');
   
   return (
     <Card>
@@ -50,7 +50,7 @@ export const IssuesList: React.FC<IssuesListProps> = ({ issues }) => {
                         </div>
                         <div className="text-right text-sm">
                           <div className="font-medium">{issue.orderId}</div>
-                          <div className="text-gray-500">{issue.driver}</div>
+                          <div className="text-gray-500">{issue.driver || 'Unspecified'}</div>
                         </div>
                       </div>
                     </div>
@@ -82,7 +82,7 @@ export const IssuesList: React.FC<IssuesListProps> = ({ issues }) => {
                         </div>
                         <div className="text-right text-sm">
                           <div className="font-medium">{issue.orderId}</div>
-                          <div className="text-gray-500">{issue.driver}</div>
+                          <div className="text-gray-500">{issue.driver || 'Unspecified'}</div>
                         </div>
                       </div>
                     </div>

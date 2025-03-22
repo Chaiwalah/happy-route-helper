@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings, DriverSummary } from './invoiceTypes';
 import { organizeOrdersIntoRoutes, removeOrdersWithNoiseTrips } from './routeOrganizer';
@@ -6,21 +7,27 @@ import { calculateInvoiceCosts } from './invoicePricing';
 import { generateDriverSummaries } from './driverSummaryGenerator';
 import { detectIssues } from './issueDetector';
 
-// Re-export types and functions for backward compatibility
-export type { Issue, InvoiceItem, Invoice, DriverSummary } from './invoiceTypes';
-export { detectIssues } from './issueDetector';
-
 // Default settings for invoice generation - disabled distance threshold flagging
 const defaultSettings: InvoiceGenerationSettings = {
+  baseRate: 25,
+  mileageRate: 1.1,
+  additionalStopFee: 12,
+  distanceThreshold: 25,
   allowManualDistanceAdjustment: true,
+  applyUrbanFee: false,
+  urbanFeeAmount: 5,
+  applyRushFee: false,
+  rushFeePercentage: 15,
+  calculateTotalMileage: true,
   flagDriverLoadThreshold: 10,
-  flagDistanceThreshold: 0, // Set to 0 to effectively disable distance-based flagging
+  flagDistanceThreshold: 100,
   flagTimeWindowThreshold: 30
 };
 
 export const generateInvoice = async (
   orders: DeliveryOrder[], 
-  settings: Partial<InvoiceGenerationSettings> = {}
+  settings: Partial<InvoiceGenerationSettings> = {},
+  progressCallback?: (current: number) => void
 ): Promise<Invoice> => {
   // Merge default settings with provided settings
   const effectiveSettings = { ...defaultSettings, ...settings };
@@ -48,7 +55,13 @@ export const generateInvoice = async (
   const items: InvoiceItem[] = [];
   
   // Process each route
-  for (const route of routes) {
+  for (let i = 0; i < routes.length; i++) {
+    // Call progress callback if provided
+    if (progressCallback) {
+      progressCallback(i + 1);
+    }
+    
+    const route = routes[i];
     const routeOrders = route.orders;
     
     // Explicitly determine if it's a single order or multi-stop route

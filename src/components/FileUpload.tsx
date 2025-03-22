@@ -374,12 +374,14 @@ export function FileUpload({ onDataParsed, isLoading, setIsLoading }: FileUpload
       </div>
 
       {/* Data Verification Dialog */}
-      <DataVerification
-        orders={parsedData}
-        open={showVerificationDialog}
-        onOpenChange={setShowVerificationDialog}
-        onOrdersVerified={handleOrdersVerified}
-      />
+      {parsedData.length > 0 && (
+        <DataVerification
+          orders={parsedData}
+          open={showVerificationDialog}
+          onOpenChange={setShowVerificationDialog}
+          onOrdersVerified={handleOrdersVerified}
+        />
+      )}
 
       {/* Data Summary Dialog */}
       <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>

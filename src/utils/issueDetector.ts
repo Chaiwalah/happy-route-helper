@@ -12,7 +12,16 @@ export const detectIssues = (
   
   // Default settings - removing flagDistanceThreshold consideration
   const effectiveSettings: InvoiceGenerationSettings = {
+    baseRate: 25,
+    mileageRate: 1.1,
+    additionalStopFee: 12,
+    distanceThreshold: 25,
     allowManualDistanceAdjustment: true,
+    applyUrbanFee: false,
+    urbanFeeAmount: 5,
+    applyRushFee: false,
+    rushFeePercentage: 15,
+    calculateTotalMileage: true,
     flagDriverLoadThreshold: 10,
     flagDistanceThreshold: 0, // Set to 0 to effectively disable distance-based flagging
     flagTimeWindowThreshold: 30,
@@ -49,7 +58,8 @@ export const detectIssues = (
       driver: 'All',
       message: 'Orders with test/noise trip numbers',
       details: `There are ${ordersWithNoiseTrips.length} orders with test or noise trip numbers (e.g., "TEST", "24", "25"). These will be excluded from invoice generation.`,
-      severity: 'warning'
+      severity: 'warning',
+      type: 'warning'
     });
   }
   
@@ -87,7 +97,8 @@ export const detectIssues = (
         driver,
         message: `Incomplete order data`,
         details: `Order ${order.id} is missing: ${missingFieldsFormatted}.`,
-        severity: 'warning'
+        severity: 'warning',
+        type: 'warning'
       });
     }
     
@@ -98,7 +109,8 @@ export const detectIssues = (
         driver,
         message: 'Missing trip number',
         details: `Order ${order.id} has no trip number assigned, which may affect route organization and invoice generation.`,
-        severity: 'warning'
+        severity: 'warning',
+        type: 'warning'
       });
     }
     
@@ -111,7 +123,8 @@ export const detectIssues = (
           driver,
           message: 'Test/noise trip number',
           details: `Order ${order.id} has a test or noise trip number "${order.tripNumber}" and will be excluded from invoice generation.`,
-          severity: 'info'
+          severity: 'info',
+          type: 'info'
         });
       }
     }
@@ -126,13 +139,14 @@ export const detectIssues = (
           const diffMinutes = (deliveryTime - readyTime) / (1000 * 60);
           
           // Check if delivery window is too short (less than threshold)
-          if (diffMinutes < effectiveSettings.flagTimeWindowThreshold) {
+          if (effectiveSettings.flagTimeWindowThreshold && diffMinutes < effectiveSettings.flagTimeWindowThreshold) {
             issues.push({
               orderId: order.id,
               driver,
               message: 'Tight delivery window',
               details: `Order ${order.id} has only ${diffMinutes.toFixed(0)} minutes between pickup and delivery time, which is less than the ${effectiveSettings.flagTimeWindowThreshold} minute threshold.`,
-              severity: 'warning'
+              severity: 'warning',
+              type: 'warning'
             });
           }
         }
@@ -155,19 +169,21 @@ export const detectIssues = (
       driver: 'All',
       message: 'Orders with missing trip numbers',
       details: `There are ${ordersWithMissingTripNumbers} orders with missing trip numbers. Consider removing them using the 'Remove Orders with Missing Trip Numbers' button.`,
-      severity: 'warning'
+      severity: 'warning',
+      type: 'warning'
     });
   }
   
   // Check for drivers with high load (more than threshold orders)
   Object.entries(driverOrderCounts).forEach(([driver, count]) => {
-    if (count > effectiveSettings.flagDriverLoadThreshold && driver !== 'Unassigned') {
+    if (effectiveSettings.flagDriverLoadThreshold && count > effectiveSettings.flagDriverLoadThreshold && driver !== 'Unassigned') {
       issues.push({
         orderId: 'multiple',
         driver,
         message: 'High driver load',
         details: `${driver} has ${count} orders assigned, which exceeds the threshold of ${effectiveSettings.flagDriverLoadThreshold} orders.`,
-        severity: 'warning'
+        severity: 'warning',
+        type: 'warning'
       });
     }
   });
@@ -194,7 +210,8 @@ export const detectIssues = (
         driver,
         message: 'Route has many stops',
         details: `Trip #${tripNumber} has ${tripOrders.length} stops, which may impact efficiency and delivery times.`,
-        severity: 'warning'
+        severity: 'warning',
+        type: 'warning'
       });
     }
   });
@@ -219,7 +236,8 @@ export const detectIssues = (
         driver: Array.from(drivers).join(', '),
         message: 'Conflicting trip assignment',
         details: `Trip #${tripNumber} is assigned to multiple drivers: ${Array.from(drivers).join(', ')}. This may indicate a data error.`,
-        severity: 'error'
+        severity: 'error',
+        type: 'error'
       });
     }
   });
