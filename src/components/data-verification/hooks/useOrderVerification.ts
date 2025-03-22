@@ -1,10 +1,12 @@
 
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { toast } from "@/components/ui/use-toast";
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
+
+export type FieldValidationStatus = 'none' | 'valid' | 'invalid' | 'warning';
 
 export const useOrderVerification = (
   initialOrders: DeliveryOrder[],
@@ -14,6 +16,42 @@ export const useOrderVerification = (
   const [selectedOrderIndex, setSelectedOrderIndex] = useState<number | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldValue, setFieldValue] = useState<string>("");
+  const [isSavingField, setIsSavingField] = useState(false);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  
+  // Generate lists of existing trip numbers and drivers for autocomplete
+  const [suggestedTripNumbers, setSuggestedTripNumbers] = useState<string[]>([]);
+  const [suggestedDrivers, setSuggestedDrivers] = useState<string[]>([]);
+  
+  // Common validation patterns
+  const tripNumberPattern = /^(TR-|TN-|T-)?[0-9]{3,}$/i; // Matches TR-123, TN-123, T-123, or just 123
+  const driverNamePattern = /^[A-Za-z. -]{2,}$/; // Simple name validation
+  
+  // Validate a trip number
+  const validateTripNumber = (tripNumber: string): boolean => {
+    if (!tripNumber || tripNumber.trim() === '') return false;
+    if (isNoiseOrTestTripNumber(tripNumber)) return false; 
+    return tripNumberPattern.test(tripNumber);
+  };
+
+  // Get validation status for any field
+  const getFieldValidationStatus = useCallback((fieldName: string, value: string): FieldValidationStatus => {
+    // Don't validate empty fields as invalid, just as missing
+    if (!value || value.trim() === '') return 'none';
+    
+    switch (fieldName) {
+      case 'tripNumber':
+        if (isNoiseOrTestTripNumber(value)) return 'warning';
+        return validateTripNumber(value) ? 'valid' : 'invalid';
+      case 'driver':
+        return driverNamePattern.test(value) ? 'valid' : 'warning';
+      case 'pickup':
+      case 'dropoff':
+        return value.length > 5 ? 'valid' : 'warning';
+      default:
+        return 'none';
+    }
+  }, []);
   
   // Update state when orders prop changes
   useEffect(() => {
@@ -61,8 +99,25 @@ export const useOrderVerification = (
       setSelectedOrderIndex(null);
       setEditingField(null);
       setFieldValue("");
+      setValidationMessage(null);
       
       console.log("DataVerification: Orders updated, count:", processedOrders.length);
+      
+      // Extract unique trip numbers and drivers for suggestions
+      const tripNumbers = processedOrders
+        .map(order => order.tripNumber?.trim())
+        .filter((tripNumber): tripNumber is string => 
+          Boolean(tripNumber) && 
+          !isNoiseOrTestTripNumber(tripNumber))
+        .filter((value, index, self) => self.indexOf(value) === index);
+      
+      const drivers = processedOrders
+        .map(order => order.driver?.trim())
+        .filter((driver): driver is string => Boolean(driver))
+        .filter((value, index, self) => self.indexOf(value) === index);
+      
+      setSuggestedTripNumbers(tripNumbers);
+      setSuggestedDrivers(drivers);
     }
   }, [initialOrders]);
   
@@ -92,17 +147,52 @@ export const useOrderVerification = (
   const handleOrderEdit = (index: number) => {
     setSelectedOrderIndex(index);
     setEditingField(null);
+    setValidationMessage(null);
     console.log("Selected order for editing:", verifiedOrders[index].id);
   };
   
   const handleFieldEdit = (field: string, value: string) => {
     setEditingField(field);
     setFieldValue(value || "");
+    setValidationMessage(null);
     console.log(`Editing field: ${field}, current value: ${value || "(empty)"}`);
   };
   
-  const handleFieldUpdate = () => {
+  const handleFieldValueChange = (value: string) => {
+    setFieldValue(value);
+    
+    // Clear any validation message when user types
+    if (validationMessage) {
+      setValidationMessage(null);
+    }
+  };
+  
+  const handleFieldUpdate = async () => {
     if (selectedOrderIndex === null || !editingField) return;
+    
+    setIsSavingField(true);
+    setValidationMessage(null);
+    
+    // Validate field before saving
+    let isValid = true;
+    let validationMsg = '';
+    
+    // Special validation for trip number
+    if (editingField === 'tripNumber') {
+      if (!fieldValue || fieldValue.trim() === '') {
+        isValid = false;
+        validationMsg = 'Trip Number cannot be empty';
+      } else if (isNoiseOrTestTripNumber(fieldValue)) {
+        // Still valid but show warning
+        validationMsg = 'Warning: This Trip Number may be filtered out as noise data';
+      } else if (!validateTripNumber(fieldValue)) {
+        // Still let them save but with warning
+        validationMsg = 'Warning: Trip Number format is unusual. Consider using format TR-123';
+      }
+    }
+    
+    // Simulate a slight delay for the save operation to show loading state
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // Using immutable update pattern
     const updatedOrders = verifiedOrders.map((order, index) => {
@@ -133,14 +223,29 @@ export const useOrderVerification = (
     // Reset editing state
     setEditingField(null);
     setFieldValue("");
+    setIsSavingField(false);
     
     const updatedOrder = updatedOrders[selectedOrderIndex];
     console.log(`Updated ${editingField} for order ${updatedOrder.id} to: ${fieldValue}`);
     
-    toast({
-      title: "Field updated",
-      description: `${editingField} for order ${updatedOrder.id} updated successfully.`,
-    });
+    // Update our autocomplete suggestions
+    if (editingField === 'tripNumber' && fieldValue && !suggestedTripNumbers.includes(fieldValue)) {
+      setSuggestedTripNumbers([...suggestedTripNumbers, fieldValue]);
+    } else if (editingField === 'driver' && fieldValue && !suggestedDrivers.includes(fieldValue)) {
+      setSuggestedDrivers([...suggestedDrivers, fieldValue]);
+    }
+    
+    // Show success message or validation warning
+    if (validationMsg) {
+      setValidationMessage(validationMsg);
+    } else {
+      setValidationMessage(`Field successfully updated. ${isValid ? '' : 'There may still be validation issues.'}`);
+      
+      toast({
+        title: "Field updated",
+        description: `${editingField} for order ${updatedOrder.id} updated successfully.`,
+      });
+    }
   };
   
   const handleVerificationComplete = () => {
@@ -179,8 +284,14 @@ export const useOrderVerification = (
     ordersWithTripNumberIssues,
     handleOrderEdit,
     handleFieldEdit,
+    handleFieldValueChange,
     handleFieldUpdate,
     handleVerificationComplete,
-    setFieldValue
+    setFieldValue,
+    isSavingField,
+    validationMessage,
+    suggestedTripNumbers,
+    suggestedDrivers,
+    getFieldValidationStatus
   };
 };

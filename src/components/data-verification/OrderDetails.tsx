@@ -2,9 +2,12 @@
 "use client"
 
 import { DeliveryOrder } from '@/utils/csvParser';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { OrderDetailField } from './OrderDetailField';
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { FieldValidationStatus } from './hooks/useOrderVerification';
 
 interface OrderDetailsProps {
   selectedOrder: DeliveryOrder | null;
@@ -14,6 +17,11 @@ interface OrderDetailsProps {
   onFieldValueChange: (value: string) => void;
   onFieldUpdate: () => void;
   ordersWithTripNumberIssues: DeliveryOrder[];
+  isSavingField: boolean;
+  validationMessage: string | null;
+  suggestedTripNumbers: string[];
+  suggestedDrivers: string[];
+  getFieldValidationStatus: (fieldName: string, value: string) => FieldValidationStatus;
 }
 
 export function OrderDetails({
@@ -23,7 +31,12 @@ export function OrderDetails({
   onFieldEdit,
   onFieldValueChange,
   onFieldUpdate,
-  ordersWithTripNumberIssues
+  ordersWithTripNumberIssues,
+  isSavingField,
+  validationMessage,
+  suggestedTripNumbers,
+  suggestedDrivers,
+  getFieldValidationStatus
 }: OrderDetailsProps) {
   if (!selectedOrder) {
     return (
@@ -50,66 +63,148 @@ export function OrderDetails({
   // Check if trip number is a noise/test trip number
   const isTripNumberNoise = selectedOrder.tripNumber ? 
     isNoiseOrTestTripNumber(selectedOrder.tripNumber) : false;
-
+    
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">
         Order Details: {selectedOrder.id}
       </h3>
       
+      {validationMessage && (
+        <Alert variant={validationMessage.includes('success') ? 'default' : 'destructive'} className="py-2">
+          <AlertDescription>{validationMessage}</AlertDescription>
+        </Alert>
+      )}
+      
       <div className="space-y-3">
         {/* Trip Number field - highlighted as critical */}
-        <OrderDetailField
-          label="Trip Number"
-          fieldName="tripNumber"
-          value={selectedOrder.tripNumber || ''}
-          isCritical={true}
-          isEditing={editingField === 'tripNumber'}
-          editingValue={fieldValue}
-          onEditStart={onFieldEdit}
-          onEditChange={onFieldValueChange}
-          onEditSave={onFieldUpdate}
-          isError={!selectedOrder.tripNumber || selectedOrder.tripNumber.trim() === ''}
-          isNoise={isTripNumberNoise}
-        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-full">
+                <OrderDetailField
+                  label={(
+                    <div className="flex items-center">
+                      Trip Number
+                      <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                    </div>
+                  )}
+                  fieldName="tripNumber"
+                  value={selectedOrder.tripNumber || ''}
+                  isCritical={true}
+                  isEditing={editingField === 'tripNumber'}
+                  editingValue={fieldValue}
+                  onEditStart={onFieldEdit}
+                  onEditChange={onFieldValueChange}
+                  onEditSave={onFieldUpdate}
+                  isError={!selectedOrder.tripNumber || selectedOrder.tripNumber.trim() === ''}
+                  isNoise={isTripNumberNoise}
+                  isSaving={isSavingField}
+                  suggestions={suggestedTripNumbers}
+                  validationStatus={getFieldValidationStatus('tripNumber', selectedOrder.tripNumber || '')}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-xs">
+              <p>Trip Numbers are critical for route organization. They should follow the format TR-[number] or be a clear identifier. 
+              Values like "TEST", "N/A", or single numbers may be filtered out as noise.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         
         {/* Driver field */}
-        <OrderDetailField
-          label="Driver"
-          fieldName="driver"
-          value={selectedOrder.driver || ''}
-          isEditing={editingField === 'driver'}
-          editingValue={fieldValue}
-          onEditStart={onFieldEdit}
-          onEditChange={onFieldValueChange}
-          onEditSave={onFieldUpdate}
-        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-full">
+                <OrderDetailField
+                  label={(
+                    <div className="flex items-center">
+                      Driver
+                      <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                    </div>
+                  )}
+                  fieldName="driver"
+                  value={selectedOrder.driver || ''}
+                  isEditing={editingField === 'driver'}
+                  editingValue={fieldValue}
+                  onEditStart={onFieldEdit}
+                  onEditChange={onFieldValueChange}
+                  onEditSave={onFieldUpdate}
+                  isSaving={isSavingField}
+                  suggestions={suggestedDrivers}
+                  validationStatus={getFieldValidationStatus('driver', selectedOrder.driver || '')}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-xs">
+              <p>Driver names should be consistent across orders to properly attribute deliveries. 
+              Ensure names follow the same format (e.g., "John Smith" vs "Smith, John").</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         
         {/* Pickup and Dropoff addresses */}
         <div className="grid grid-cols-2 gap-3">
-          <OrderDetailField
-            label="Pickup Address"
-            fieldName="pickup"
-            value={selectedOrder.pickup || ''}
-            isEditing={editingField === 'pickup'}
-            editingValue={fieldValue}
-            onEditStart={onFieldEdit}
-            onEditChange={onFieldValueChange}
-            onEditSave={onFieldUpdate}
-            isError={!selectedOrder.pickup}
-          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-full">
+                  <OrderDetailField
+                    label={(
+                      <div className="flex items-center">
+                        Pickup Address
+                        <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                      </div>
+                    )}
+                    fieldName="pickup"
+                    value={selectedOrder.pickup || ''}
+                    isEditing={editingField === 'pickup'}
+                    editingValue={fieldValue}
+                    onEditStart={onFieldEdit}
+                    onEditChange={onFieldValueChange}
+                    onEditSave={onFieldUpdate}
+                    isError={!selectedOrder.pickup}
+                    isSaving={isSavingField}
+                    validationStatus={getFieldValidationStatus('pickup', selectedOrder.pickup || '')}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p>Enter a complete pickup address including street number, name, and city for accurate routing.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           
-          <OrderDetailField
-            label="Dropoff Address"
-            fieldName="dropoff"
-            value={selectedOrder.dropoff || ''}
-            isEditing={editingField === 'dropoff'}
-            editingValue={fieldValue}
-            onEditStart={onFieldEdit}
-            onEditChange={onFieldValueChange}
-            onEditSave={onFieldUpdate}
-            isError={!selectedOrder.dropoff}
-          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-full">
+                  <OrderDetailField
+                    label={(
+                      <div className="flex items-center">
+                        Dropoff Address
+                        <Info className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                      </div>
+                    )}
+                    fieldName="dropoff"
+                    value={selectedOrder.dropoff || ''}
+                    isEditing={editingField === 'dropoff'}
+                    editingValue={fieldValue}
+                    onEditStart={onFieldEdit}
+                    onEditChange={onFieldValueChange}
+                    onEditSave={onFieldUpdate}
+                    isError={!selectedOrder.dropoff}
+                    isSaving={isSavingField}
+                    validationStatus={getFieldValidationStatus('dropoff', selectedOrder.dropoff || '')}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p>Enter a complete delivery address including street number, name, and city for accurate routing and reporting.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         
         {/* Time windows */}
@@ -123,6 +218,8 @@ export function OrderDetails({
             onEditStart={onFieldEdit}
             onEditChange={onFieldValueChange}
             onEditSave={onFieldUpdate}
+            isSaving={isSavingField}
+            validationStatus={getFieldValidationStatus('exReadyTime', selectedOrder.exReadyTime || '')}
           />
           
           <OrderDetailField
@@ -134,6 +231,8 @@ export function OrderDetails({
             onEditStart={onFieldEdit}
             onEditChange={onFieldValueChange}
             onEditSave={onFieldUpdate}
+            isSaving={isSavingField}
+            validationStatus={getFieldValidationStatus('exDeliveryTime', selectedOrder.exDeliveryTime || '')}
           />
         </div>
       </div>

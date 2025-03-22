@@ -14,6 +14,8 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { useOrderVerification } from './hooks/useOrderVerification';
 import { VerificationSidebar } from './VerificationSidebar';
 import { OrderDetails } from './OrderDetails';
+import { AlertTriangle, CheckCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
@@ -37,9 +39,14 @@ export function DataVerification({
     ordersWithTripNumberIssues,
     handleOrderEdit,
     handleFieldEdit,
+    handleFieldValueChange,
     handleFieldUpdate,
     handleVerificationComplete,
-    setFieldValue
+    isSavingField,
+    validationMessage,
+    suggestedTripNumbers,
+    suggestedDrivers,
+    getFieldValidationStatus
   } = useOrderVerification(orders, onOrdersVerified);
 
   const handleOpenChange = (newOpenState: boolean) => {
@@ -50,6 +57,8 @@ export function DataVerification({
       onOpenChange(true);
     }
   };
+
+  const anyRemainingIssues = ordersWithTripNumberIssues.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -76,12 +85,38 @@ export function DataVerification({
               editingField={editingField}
               fieldValue={fieldValue}
               onFieldEdit={handleFieldEdit}
-              onFieldValueChange={setFieldValue}
+              onFieldValueChange={handleFieldValueChange}
               onFieldUpdate={handleFieldUpdate}
               ordersWithTripNumberIssues={ordersWithTripNumberIssues}
+              isSavingField={isSavingField}
+              validationMessage={validationMessage}
+              suggestedTripNumbers={suggestedTripNumbers}
+              suggestedDrivers={suggestedDrivers}
+              getFieldValidationStatus={getFieldValidationStatus}
             />
           </div>
         </div>
+        
+        {anyRemainingIssues && (
+          <Alert variant="warning" className="my-2 border-amber-300">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Validation Required</AlertTitle>
+            <AlertDescription>
+              {ordersWithTripNumberIssues.length} orders still have missing or invalid trip numbers.
+              You can continue, but these orders may not be properly organized into routes.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {!anyRemainingIssues && ordersRequiringVerification.length === 0 && (
+          <Alert variant="default" className="my-2 bg-green-50 border-green-300">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <AlertTitle className="text-green-700">All Data Validated</AlertTitle>
+            <AlertDescription className="text-green-600">
+              All orders have been successfully verified and are ready for processing.
+            </AlertDescription>
+          </Alert>
+        )}
         
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
