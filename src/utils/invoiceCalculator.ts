@@ -94,7 +94,7 @@ export const generateInvoice = (orders: DeliveryOrder[]): Invoice => {
     const routeType = routeOrders.length === 1 ? 'single' : 'multi-stop';
     const stops = routeOrders.length;
     
-    // Apply billing logic with correct formulas
+    // Apply billing logic with CORRECT formulas
     let baseCost = 0;
     let addOns = 0;
     
