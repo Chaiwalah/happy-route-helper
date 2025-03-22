@@ -9,6 +9,7 @@ import { IssueFlagging } from '@/components/IssueFlagging';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const Index = () => {
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
@@ -45,11 +46,12 @@ const Index = () => {
             <h1 className="text-xl font-medium tracking-tight">Dispatch & Invoicing Assistant</h1>
           </div>
           <div className="flex flex-1 items-center justify-end space-x-2">
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground mr-4">
               {orders.length > 0 && (
                 <span>{orders.length} order{orders.length !== 1 && 's'} loaded</span>
               )}
             </div>
+            <ThemeToggle />
           </div>
         </div>
       </header>
