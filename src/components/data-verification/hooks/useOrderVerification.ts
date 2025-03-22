@@ -2,304 +2,389 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
-import { toast } from "@/components/ui/use-toast";
 import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 
-export type FieldValidationStatus = 'none' | 'valid' | 'invalid' | 'warning';
+// Define the validation status type for field-level validation
+export type FieldValidationStatus = 'valid' | 'warning' | 'error' | 'success' | 'info' | 'none';
 
-export const useOrderVerification = (
-  initialOrders: DeliveryOrder[],
-  onOrdersVerified: (orders: DeliveryOrder[]) => void
-) => {
-  const [verifiedOrders, setVerifiedOrders] = useState<DeliveryOrder[]>(initialOrders);
-  const [selectedOrderIndex, setSelectedOrderIndex] = useState<number | null>(null);
+// Interface for the order verification hook
+export interface UseOrderVerificationProps {
+  orders: DeliveryOrder[];
+  onOrdersVerified: (verifiedOrders: DeliveryOrder[]) => void;
+}
+
+// Interface for the order verification hook return value
+export interface UseOrderVerificationReturn {
+  ordersWithIssues: DeliveryOrder[];
+  selectedOrderId: string | null;
+  setSelectedOrderId: (id: string | null) => void;
+  selectedOrder: DeliveryOrder | null;
+  editingField: string | null;
+  fieldValue: string;
+  isSavingField: boolean;
+  validationMessage: string | null;
+  suggestedTripNumbers: string[];
+  suggestedDrivers: string[];
+  handleFieldEdit: (field: string, value: string) => void;
+  handleFieldValueChange: (value: string) => void;
+  handleFieldUpdate: () => void;
+  handleOrdersApprove: () => void;
+  getOrderValidationStatus: (order: DeliveryOrder) => 'valid' | 'warning' | 'error';
+  getFieldValidationStatus: (fieldName: string, value: string) => FieldValidationStatus;
+  updateOrder: (orderId: string, fieldName: string, value: string) => Promise<boolean>;
+}
+
+export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerificationProps): UseOrderVerificationReturn => {
+  // Initialize state for managing orders with issues
+  const [ordersWithIssues, setOrdersWithIssues] = useState<DeliveryOrder[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
-  const [fieldValue, setFieldValue] = useState<string>("");
-  const [isSavingField, setIsSavingField] = useState(false);
+  const [fieldValue, setFieldValue] = useState<string>('');
+  const [isSavingField, setIsSavingField] = useState<boolean>(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
-  
-  // Generate lists of existing trip numbers and drivers for autocomplete
+  // Store suggested values for autocomplete
   const [suggestedTripNumbers, setSuggestedTripNumbers] = useState<string[]>([]);
   const [suggestedDrivers, setSuggestedDrivers] = useState<string[]>([]);
-  
-  // Common validation patterns
-  const tripNumberPattern = /^(TR-|TN-|T-)?[0-9]{3,}$/i; // Matches TR-123, TN-123, T-123, or just 123
-  const driverNamePattern = /^[A-Za-z. -]{2,}$/; // Simple name validation
-  
-  // Validate a trip number
-  const validateTripNumber = (tripNumber: string): boolean => {
-    if (!tripNumber || tripNumber.trim() === '') return false;
-    if (isNoiseOrTestTripNumber(tripNumber)) return false; 
-    return tripNumberPattern.test(tripNumber);
-  };
 
-  // Get validation status for any field
-  const getFieldValidationStatus = useCallback((fieldName: string, value: string): FieldValidationStatus => {
-    // Don't validate empty fields as invalid, just as missing
-    if (!value || value.trim() === '') return 'none';
-    
-    switch (fieldName) {
-      case 'tripNumber':
-        if (isNoiseOrTestTripNumber(value)) return 'warning';
-        return validateTripNumber(value) ? 'valid' : 'invalid';
-      case 'driver':
-        return driverNamePattern.test(value) ? 'valid' : 'warning';
-      case 'pickup':
-      case 'dropoff':
-        return value.length > 5 ? 'valid' : 'warning';
-      default:
-        return 'none';
-    }
-  }, []);
-  
-  // Update state when orders prop changes
+  // Process orders and identify issues
   useEffect(() => {
-    if (initialOrders && initialOrders.length > 0) {
-      // Preprocess the orders to remove any false positives in missingFields
-      const processedOrders = initialOrders.map(order => {
-        // Create a copy to avoid mutating props
-        const updatedOrder = { ...order };
-        
-        // Fix missing fields detection for trip numbers that are "N/A" but not empty
-        if (updatedOrder.tripNumber && updatedOrder.tripNumber.trim() !== '' && 
-            updatedOrder.missingFields.includes('tripNumber')) {
-          // If we have a non-empty trip number but it's flagged as missing, remove it from missingFields
-          // This fixes the case where "N/A" is a valid value but treated as missing
-          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
-          console.log(`Fixed false positive: Order ${updatedOrder.id} has Trip Number "${updatedOrder.tripNumber}" but was incorrectly marked as missing`);
-        }
-        
-        // Similar check for driver - preserve actual driver values
-        if (updatedOrder.driver && updatedOrder.driver.trim() !== '' && 
-            updatedOrder.driver !== 'Unassigned' &&
-            updatedOrder.missingFields.includes('driver')) {
-          // If we have a non-empty driver but it's flagged as missing, remove it from missingFields
-          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'driver');
-          console.log(`Fixed false positive: Order ${updatedOrder.id} has Driver "${updatedOrder.driver}" but was incorrectly marked as missing`);
-        }
-        
-        // Additional check for "N/A" as a trip number - mark as missing or noise
-        if (updatedOrder.tripNumber && (
-            updatedOrder.tripNumber.trim() === 'N/A' || 
-            updatedOrder.tripNumber.trim() === 'n/a')) {
-          // Replace "N/A" with empty string to trigger proper trip number validation
-          updatedOrder.tripNumber = '';
-          
-          // Add tripNumber to missingFields if not already there
-          if (!updatedOrder.missingFields.includes('tripNumber')) {
-            updatedOrder.missingFields.push('tripNumber');
-            console.log(`Marked Order ${updatedOrder.id} with "N/A" Trip Number as missing`);
-          }
-        }
-        
-        // Skip unstructured field validation from Special Instructions
-        if (updatedOrder.notes && updatedOrder.notes.includes('SPECIAL INSTRUCTIONS')) {
-          console.log(`Order ${updatedOrder.id} has special instructions that may contain unstructured data`);
-          // No need to flag special instructions fields as issues
-        }
-        
-        return updatedOrder;
-      });
-      
-      setVerifiedOrders(processedOrders);
-      
-      // Reset selection state when orders change
-      setSelectedOrderIndex(null);
-      setEditingField(null);
-      setFieldValue("");
-      setValidationMessage(null);
-      
-      console.log("DataVerification: Orders updated, count:", processedOrders.length);
-      
-      // Extract unique trip numbers and drivers for suggestions
-      const tripNumbers = processedOrders
-        .map(order => order.tripNumber?.trim())
-        .filter((tripNumber): tripNumber is string => 
-          Boolean(tripNumber) && 
-          !isNoiseOrTestTripNumber(tripNumber))
-        .filter((value, index, self) => self.indexOf(value) === index);
-      
-      const drivers = processedOrders
-        .map(order => order.driver?.trim())
-        .filter((driver): driver is string => Boolean(driver))
-        .filter((value, index, self) => self.indexOf(value) === index);
-      
-      setSuggestedTripNumbers(tripNumbers);
-      setSuggestedDrivers(drivers);
-    }
-  }, [initialOrders]);
-  
-  // Filter orders with missing or potentially problematic data
-  // Exclude noise trip numbers from verification as they'll be filtered out anyway
-  const ordersRequiringVerification = verifiedOrders.filter(order => {
-    // Skip orders with test/noise trip numbers from verification
-    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
-      return false;
-    }
+    // Deep clone orders to avoid mutating original array
+    const processedOrders = orders.map(order => ({...order}));
     
-    // Include orders with actual missing fields or missing trip numbers
-    return order.missingFields.length > 0 || !order.tripNumber || order.tripNumber.trim() === '';
-  });
-  
-  // Focus on Trip Number field issues specifically
-  const ordersWithTripNumberIssues = verifiedOrders.filter(order => {
-    // Skip testing/noise trip numbers
-    if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
-      return false;
-    }
+    // Enhanced processing to identify orders with issues
+    const ordersWithTripNumberIssues = processedOrders.filter(order => {
+      // Check each order for potential issues and fix any false positive flags
+      
+      // First, ensure we handle trip number validation correctly
+      if (order.tripNumber && order.tripNumber.trim() !== '') {
+        // If trip number exists and is flagged as missing (false positive), fix it
+        if (order.missingFields.includes('tripNumber')) {
+          // This fixes the case where trip number exists but was marked as missing
+          order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
+          console.log(`Fixed false positive: Order ${order.id} has Trip Number "${order.tripNumber}" but was incorrectly marked as missing`);
+        }
+      }
+      
+      // Similar check for driver - preserve actual driver values
+      if (order.driver && order.driver.trim() !== '' && 
+          order.driver !== 'Unassigned' &&
+          order.missingFields.includes('driver')) {
+        // If we have a non-empty driver but it's flagged as missing, remove it from missingFields
+        order.missingFields = order.missingFields.filter(field => field !== 'driver');
+        console.log(`Fixed false positive: Order ${order.id} has Driver "${order.driver}" but was incorrectly marked as missing`);
+      }
+      
+      // Additional check for "N/A" as a trip number - mark as missing or noise
+      if (order.tripNumber && (
+          order.tripNumber.toLowerCase() === 'n/a' || 
+          order.tripNumber.toLowerCase() === 'na' ||
+          order.tripNumber.toLowerCase() === 'none' ||
+          order.tripNumber.trim() === '-'
+      )) {
+        // Don't let "N/A" be a valid trip number - mark as missing unless already marked
+        if (!order.missingFields.includes('tripNumber')) {
+          order.missingFields.push('tripNumber');
+          console.log(`Marked Order ${order.id} with Trip Number "${order.tripNumber}" as missing trip number`);
+        }
+      }
+      
+      // Final check for noise/test trip numbers
+      if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
+        // Flag orders with test/noise trip numbers
+        if (!order.missingFields.includes('tripNumber')) {
+          order.missingFields.push('tripNumber');
+          console.log(`Marked Order ${order.id} with noise/test Trip Number "${order.tripNumber}" as missing trip number`);
+        }
+      }
+      
+      // Return true if order has missing trip number or has trip number marked as missing field
+      return !order.tripNumber || 
+             order.tripNumber.trim() === '' || 
+             order.missingFields.includes('tripNumber');
+    });
     
-    // Include actually missing trip numbers
-    return !order.tripNumber || order.tripNumber.trim() === '' || order.missingFields.includes('tripNumber');
-  });
-  
-  const handleOrderEdit = (index: number) => {
-    setSelectedOrderIndex(index);
-    setEditingField(null);
-    setValidationMessage(null);
-    console.log("Selected order for editing:", verifiedOrders[index].id);
-  };
-  
+    // Find all unique trip numbers and drivers for suggestions (excluding noise values)
+    const allTripNumbers = processedOrders
+      .map(o => o.tripNumber)
+      .filter((value): value is string => 
+        !!value && 
+        value.trim() !== '' && 
+        !isNoiseOrTestTripNumber(value) &&
+        !['n/a', 'na', 'none', '-'].includes(value.toLowerCase())
+      );
+    
+    const allDrivers = processedOrders
+      .map(o => o.driver)
+      .filter((value): value is string => 
+        !!value && 
+        value.trim() !== '' && 
+        value !== 'Unassigned'
+      );
+    
+    // Set unique suggested values for autocomplete
+    setSuggestedTripNumbers([...new Set(allTripNumbers)].sort());
+    setSuggestedDrivers([...new Set(allDrivers)].sort());
+    
+    console.log(`DataVerification: Orders updated, count: ${processedOrders.length}`);
+    
+    setOrdersWithIssues(ordersWithTripNumberIssues);
+    
+    // If there are issues and no order is selected, select the first one
+    if (ordersWithTripNumberIssues.length > 0 && !selectedOrderId) {
+      setSelectedOrderId(ordersWithTripNumberIssues[0].id);
+    }
+  }, [orders, selectedOrderId]);
+
+  // Get the currently selected order
+  const selectedOrder = ordersWithIssues.find(order => order.id === selectedOrderId) || null;
+
+  // Handle edit field action
   const handleFieldEdit = (field: string, value: string) => {
     setEditingField(field);
-    setFieldValue(value || "");
+    setFieldValue(value);
     setValidationMessage(null);
-    console.log(`Editing field: ${field}, current value: ${value || "(empty)"}`);
   };
-  
+
+  // Handle field value change
   const handleFieldValueChange = (value: string) => {
     setFieldValue(value);
     
-    // Clear any validation message when user types
-    if (validationMessage) {
-      setValidationMessage(null);
-    }
-  };
-  
-  const handleFieldUpdate = async () => {
-    if (selectedOrderIndex === null || !editingField) return;
-    
-    setIsSavingField(true);
-    setValidationMessage(null);
-    
-    // Validate field before saving
-    let isValid = true;
-    let validationMsg = '';
-    
-    // Special validation for trip number
-    if (editingField === 'tripNumber') {
-      if (!fieldValue || fieldValue.trim() === '') {
-        isValid = false;
-        validationMsg = 'Trip Number cannot be empty';
-      } else if (isNoiseOrTestTripNumber(fieldValue)) {
-        // Still valid but show warning
-        validationMsg = 'Warning: This Trip Number may be filtered out as noise data';
-      } else if (!validateTripNumber(fieldValue)) {
-        // Still let them save but with warning
-        validationMsg = 'Warning: Trip Number format is unusual. Consider using format TR-123';
-      }
-    }
-    
-    // Simulate a slight delay for the save operation to show loading state
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // Using immutable update pattern
-    const updatedOrders = verifiedOrders.map((order, index) => {
-      if (index === selectedOrderIndex) {
-        // Create a new object with the updated field
-        const updatedOrder = { ...order };
-        
-        // Typesafe way to update the dynamic property
-        (updatedOrder as any)[editingField] = fieldValue;
-        
-        // If we're updating a field that was missing, remove it from missingFields
-        if (updatedOrder.missingFields.includes(editingField)) {
-          updatedOrder.missingFields = updatedOrder.missingFields.filter(f => f !== editingField);
-        }
-        
-        // Special case for Trip Number - always mark as resolved if we manually set a value
-        if (editingField === 'tripNumber' && fieldValue.trim() !== '') {
-          updatedOrder.missingFields = updatedOrder.missingFields.filter(f => f !== 'tripNumber');
-        }
-        
-        return updatedOrder;
-      }
-      return order;
-    });
-    
-    setVerifiedOrders(updatedOrders);
-    
-    // Reset editing state
-    setEditingField(null);
-    setFieldValue("");
-    setIsSavingField(false);
-    
-    const updatedOrder = updatedOrders[selectedOrderIndex];
-    console.log(`Updated ${editingField} for order ${updatedOrder.id} to: ${fieldValue}`);
-    
-    // Update our autocomplete suggestions
-    if (editingField === 'tripNumber' && fieldValue && !suggestedTripNumbers.includes(fieldValue)) {
-      setSuggestedTripNumbers([...suggestedTripNumbers, fieldValue]);
-    } else if (editingField === 'driver' && fieldValue && !suggestedDrivers.includes(fieldValue)) {
-      setSuggestedDrivers([...suggestedDrivers, fieldValue]);
-    }
-    
-    // Show success message or validation warning
-    if (validationMsg) {
-      setValidationMessage(validationMsg);
-    } else {
-      setValidationMessage(`Field successfully updated. ${isValid ? '' : 'There may still be validation issues.'}`);
-      
-      toast({
-        title: "Field updated",
-        description: `${editingField} for order ${updatedOrder.id} updated successfully.`,
-      });
-    }
-  };
-  
-  const handleVerificationComplete = () => {
-    // Check for any remaining issues with trip numbers
-    const stillMissingTripNumbers = verifiedOrders.filter(order => 
-      // Skip test/noise trip numbers from this check
-      !(order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) &&
-      // Only flag actually missing or empty trip numbers
-      (!order.tripNumber || order.tripNumber.trim() === '')
-    ).length;
-    
-    if (stillMissingTripNumbers > 0) {
-      const confirmComplete = window.confirm(
-        `There are still ${stillMissingTripNumbers} orders missing trip numbers. Do you want to continue anyway?`
-      );
-      
-      if (!confirmComplete) {
-        return;
-      }
-    }
-    
-    onOrdersVerified(verifiedOrders);
-    
-    toast({
-      title: "Data verification complete",
-      description: `${verifiedOrders.length} orders have been verified and updated.`,
-    });
+    // Optionally add real-time validation here
+    validateField(editingField || '', value);
   };
 
+  // Validate field based on field name and value
+  const validateField = (fieldName: string, value: string): boolean => {
+    // Reset validation message
+    setValidationMessage(null);
+    
+    if (!value.trim()) {
+      if (fieldName === 'tripNumber') {
+        setValidationMessage('Trip Number cannot be empty');
+        return false;
+      }
+      
+      if (fieldName === 'driver') {
+        setValidationMessage('Driver cannot be empty');
+        return false;
+      }
+    }
+    
+    if (fieldName === 'tripNumber') {
+      // Check for noise/test values
+      if (isNoiseOrTestTripNumber(value)) {
+        setValidationMessage('Warning: This appears to be a test/noise value');
+        return false;
+      }
+      
+      // Check for N/A values
+      if (['n/a', 'na', 'none'].includes(value.toLowerCase())) {
+        setValidationMessage('Trip Number cannot be N/A or None');
+        return false;
+      }
+      
+      // Validate proper trip number format (e.g. TR-123456)
+      const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
+      if (!tripNumberPattern.test(value) && value.trim() !== '') {
+        setValidationMessage('Warning: Trip Number format may be incorrect. Expected format: TR-123456 or 123456');
+        // Still allow it but with a warning
+      }
+    }
+    
+    return true;
+  };
+
+  // Update the order with the new field value
+  const updateOrder = async (orderId: string, fieldName: keyof DeliveryOrder, value: string): Promise<boolean> => {
+    try {
+      // Simple validation
+      if (!validateField(fieldName, value)) {
+        return false;
+      }
+      
+      // Find the order to update
+      const orderIndex = ordersWithIssues.findIndex(order => order.id === orderId);
+      if (orderIndex === -1) return false;
+      
+      // Create a new array with the updated order
+      const updatedOrders = [...ordersWithIssues];
+      const updatedOrder = { ...updatedOrders[orderIndex] };
+      
+      // Update the field
+      if (fieldName === 'tripNumber') {
+        updatedOrder.tripNumber = value;
+        
+        // If tripNumber was in missingFields, remove it
+        if (value && value.trim() !== '' && 
+            !isNoiseOrTestTripNumber(value) && 
+            !['n/a', 'na', 'none'].includes(value.toLowerCase())) {
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'tripNumber');
+        } else {
+          // Add it back if it's missing or invalid
+          if (!updatedOrder.missingFields.includes('tripNumber')) {
+            updatedOrder.missingFields.push('tripNumber');
+          }
+        }
+      } else if (fieldName === 'driver') {
+        updatedOrder.driver = value;
+        
+        // If driver is not empty or "Unassigned", remove from missingFields
+        if (value && value.trim() !== '' && value !== 'Unassigned') {
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== 'driver');
+        } else {
+          // Add it back if it's missing
+          if (!updatedOrder.missingFields.includes('driver')) {
+            updatedOrder.missingFields.push('driver');
+          }
+        }
+      } else {
+        // For other fields, simply update the value
+        (updatedOrder as any)[fieldName] = value;
+        
+        // If the field was in missingFields and now has a value, remove it
+        if (value && value.trim() !== '') {
+          updatedOrder.missingFields = updatedOrder.missingFields.filter(field => field !== fieldName);
+        }
+      }
+      
+      // Update the orders array
+      updatedOrders[orderIndex] = updatedOrder;
+      setOrdersWithIssues(updatedOrders);
+      
+      // Show success message
+      setValidationMessage('Field updated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error updating order:', error);
+      setValidationMessage('Error updating field');
+      return false;
+    }
+  };
+
+  // Handle field update
+  const handleFieldUpdate = useCallback(async () => {
+    if (!selectedOrderId || editingField === null) return;
+    
+    setIsSavingField(true);
+    try {
+      const success = await updateOrder(selectedOrderId, editingField as keyof DeliveryOrder, fieldValue);
+      if (success) {
+        // Clear editing state on success
+        setEditingField(null);
+        
+        // Show success message
+        setValidationMessage('Field updated successfully');
+      }
+    } finally {
+      setIsSavingField(false);
+    }
+  }, [selectedOrderId, editingField, fieldValue]);
+
+  // Get validation status for an order
+  const getOrderValidationStatus = useCallback((order: DeliveryOrder): 'valid' | 'warning' | 'error' => {
+    // Check for trip number issues - most critical
+    if (!order.tripNumber || 
+        order.tripNumber.trim() === '' || 
+        isNoiseOrTestTripNumber(order.tripNumber) ||
+        ['n/a', 'na', 'none'].includes(order.tripNumber.toLowerCase())) {
+      return 'error';
+    }
+    
+    // Check for other missing fields - less critical
+    if (order.missingFields.length > 0) {
+      // Missing driver is a warning
+      if (order.missingFields.includes('driver')) {
+        return 'warning';
+      }
+      
+      // Missing address is an error
+      if (order.missingFields.includes('address') || order.missingFields.includes('pickupLocation')) {
+        return 'error';
+      }
+      
+      // Other missing fields are warnings
+      return 'warning';
+    }
+    
+    return 'valid';
+  }, []);
+
+  // Get validation status for a specific field
+  const getFieldValidationStatus = useCallback((fieldName: string, value: string): FieldValidationStatus => {
+    if (!value || value.trim() === '') {
+      // Critical fields
+      if (fieldName === 'tripNumber' || 
+          fieldName === 'driver' || 
+          fieldName === 'pickup' || 
+          fieldName === 'dropoff') {
+        return 'error';
+      }
+      
+      // Optional fields
+      return 'warning';
+    }
+    
+    // Check for trip number specific validation
+    if (fieldName === 'tripNumber') {
+      // Check for noise/test values
+      if (isNoiseOrTestTripNumber(value)) {
+        return 'error';
+      }
+      
+      // Check for N/A values
+      if (['n/a', 'na', 'none'].includes(value.toLowerCase())) {
+        return 'error';
+      }
+      
+      // Validate proper trip number format (e.g. TR-123456)
+      const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
+      if (!tripNumberPattern.test(value.trim())) {
+        return 'warning';
+      }
+    }
+    
+    // Driver should not be "Unassigned"
+    if (fieldName === 'driver' && value === 'Unassigned') {
+      return 'warning';
+    }
+    
+    return 'valid';
+  }, []);
+
+  // Handle approve action to verify all orders
+  const handleOrdersApprove = useCallback(() => {
+    // Create a map of all orders
+    const allOrdersMap = new Map(orders.map(order => [order.id, order]));
+    
+    // Update orders with the corrected values from ordersWithIssues
+    ordersWithIssues.forEach(updatedOrder => {
+      allOrdersMap.set(updatedOrder.id, updatedOrder);
+    });
+    
+    // Convert map back to array
+    const finalOrders = Array.from(allOrdersMap.values());
+    
+    // Call the onOrdersVerified callback with the final orders
+    onOrdersVerified(finalOrders);
+  }, [orders, ordersWithIssues, onOrdersVerified]);
+
   return {
-    verifiedOrders,
-    selectedOrderIndex,
+    ordersWithIssues,
+    selectedOrderId,
+    setSelectedOrderId,
+    selectedOrder,
     editingField,
     fieldValue,
-    ordersRequiringVerification,
-    ordersWithTripNumberIssues,
-    handleOrderEdit,
-    handleFieldEdit,
-    handleFieldValueChange,
-    handleFieldUpdate,
-    handleVerificationComplete,
-    setFieldValue,
     isSavingField,
     validationMessage,
     suggestedTripNumbers,
     suggestedDrivers,
-    getFieldValidationStatus
+    handleFieldEdit,
+    handleFieldValueChange,
+    handleFieldUpdate,
+    handleOrdersApprove,
+    getOrderValidationStatus,
+    getFieldValidationStatus,
+    updateOrder
   };
 };
