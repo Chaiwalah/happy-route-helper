@@ -1,10 +1,22 @@
 
 import { DeliveryOrder } from './csvParser';
-import { Issue } from './invoiceTypes';
+import { Issue, InvoiceGenerationSettings } from './invoiceTypes';
 
-export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
+export const detectIssues = (
+  orders: DeliveryOrder[], 
+  settings?: Partial<InvoiceGenerationSettings>
+): Issue[] => {
   const issues: Issue[] = [];
   const driverOrderCounts: Record<string, number> = {};
+  
+  // Default settings
+  const effectiveSettings: InvoiceGenerationSettings = {
+    allowManualDistanceAdjustment: true,
+    flagDriverLoadThreshold: 10,
+    flagDistanceThreshold: 50, 
+    flagTimeWindowThreshold: 30,
+    ...settings
+  };
   
   // Count orders per driver
   orders.forEach(order => {
@@ -48,16 +60,78 @@ export const detectIssues = (orders: DeliveryOrder[]): Issue[] => {
         severity: 'warning'
       });
     }
+    
+    // Flag orders with long distances - may indicate wrong address or inefficient routing
+    if (order.estimatedDistance && order.estimatedDistance > effectiveSettings.flagDistanceThreshold) {
+      issues.push({
+        orderId: order.id,
+        driver,
+        message: 'Unusually long route',
+        details: `Order ${order.id} has an estimated distance of ${order.estimatedDistance.toFixed(1)} miles, which exceeds the ${effectiveSettings.flagDistanceThreshold} mile threshold.`,
+        severity: 'warning'
+      });
+    }
+    
+    // Flag orders with tight delivery timeframes
+    if (order.exReadyTime && order.exDeliveryTime) {
+      try {
+        const readyTime = new Date(order.exReadyTime).getTime();
+        const deliveryTime = new Date(order.exDeliveryTime).getTime();
+        
+        if (!isNaN(readyTime) && !isNaN(deliveryTime)) {
+          const diffMinutes = (deliveryTime - readyTime) / (1000 * 60);
+          
+          // Check if delivery window is too short (less than threshold)
+          if (diffMinutes < effectiveSettings.flagTimeWindowThreshold) {
+            issues.push({
+              orderId: order.id,
+              driver,
+              message: 'Tight delivery window',
+              details: `Order ${order.id} has only ${diffMinutes.toFixed(0)} minutes between pickup and delivery time, which is less than the ${effectiveSettings.flagTimeWindowThreshold} minute threshold.`,
+              severity: 'warning'
+            });
+          }
+        }
+      } catch (e) {
+        // Handle invalid date formats
+        console.error('Error parsing date for order', order.id, e);
+      }
+    }
   });
   
-  // Check for drivers with high load (more than 10 orders)
+  // Check for drivers with high load (more than threshold orders)
   Object.entries(driverOrderCounts).forEach(([driver, count]) => {
-    if (count > 10 && driver !== 'Unassigned') {
+    if (count > effectiveSettings.flagDriverLoadThreshold && driver !== 'Unassigned') {
       issues.push({
         orderId: 'multiple',
         driver,
         message: 'High driver load',
-        details: `${driver} has ${count} orders assigned, which may be excessive.`,
+        details: `${driver} has ${count} orders assigned, which exceeds the threshold of ${effectiveSettings.flagDriverLoadThreshold} orders.`,
+        severity: 'warning'
+      });
+    }
+  });
+  
+  // Group orders by Trip Number to check for potential routing issues
+  const tripOrderCounts: Record<string, DeliveryOrder[]> = {};
+  orders.forEach(order => {
+    if (order.tripNumber) {
+      if (!tripOrderCounts[order.tripNumber]) {
+        tripOrderCounts[order.tripNumber] = [];
+      }
+      tripOrderCounts[order.tripNumber].push(order);
+    }
+  });
+  
+  // Flag multi-stop routes with many stops (potential efficiency issue)
+  Object.entries(tripOrderCounts).forEach(([tripNumber, tripOrders]) => {
+    if (tripOrders.length > 5) { // More than 5 stops might be inefficient
+      const driver = tripOrders[0].driver || 'Unassigned';
+      issues.push({
+        orderId: tripOrders.map(o => o.id).join(', '),
+        driver,
+        message: 'Route has many stops',
+        details: `Trip #${tripNumber} has ${tripOrders.length} stops, which may impact efficiency and delivery times.`,
         severity: 'warning'
       });
     }

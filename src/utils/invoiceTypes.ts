@@ -20,6 +20,10 @@ export type InvoiceItem = {
   baseCost: number;
   addOns: number;
   totalCost: number;
+  recalculated?: boolean;  // Flag for manually recalculated distances
+  originalDistance?: number; // Original distance before recalculation
+  timeWindow?: string;     // Time window information
+  orderIds?: string[];     // Array of all order IDs (for multi-stop routes)
 };
 
 export type DriverSummary = {
@@ -35,6 +39,9 @@ export type Invoice = {
   totalDistance: number;
   totalCost: number;
   driverSummaries: DriverSummary[];
+  recalculatedCount?: number; // Count of manually recalculated items
+  status: 'draft' | 'reviewed' | 'finalized';
+  lastModified: string;
 };
 
 export type OrderRoute = {
@@ -62,4 +69,17 @@ export type ParsedDataSummary = {
     validDropoffAddresses: number;
     missingAddresses: number;
   };
+};
+
+// Advanced settings for invoice generation
+export type InvoiceGenerationSettings = {
+  allowManualDistanceAdjustment: boolean;
+  flagDriverLoadThreshold: number; // Number of orders threshold for driver overload
+  flagDistanceThreshold: number;   // Distance threshold for route warnings
+  flagTimeWindowThreshold: number; // Minutes threshold for delivery time warnings
+};
+
+export type DistanceRecalculationRequest = {
+  itemId: string;
+  newDistance: number;
 };

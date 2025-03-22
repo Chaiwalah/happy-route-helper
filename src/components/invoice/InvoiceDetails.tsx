@@ -7,12 +7,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Invoice } from '@/utils/invoiceCalculator';
 import { toast } from '@/components/ui/use-toast';
+import { CalculatorIcon, Clock, FileDown, Printer, RefreshCw } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface InvoiceDetailsProps {
   invoice: Invoice;
+  onRecalculateDistance?: (index: number, currentDistance: number) => void;
+  allowRecalculation?: boolean;
 }
 
-export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
+export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ 
+  invoice,
+  onRecalculateDistance,
+  allowRecalculation = false
+}) => {
   const invoiceRef = useRef<HTMLDivElement>(null);
 
   const handleExportInvoice = () => {
@@ -176,9 +184,11 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
           <span>Invoice - {invoice.date}</span>
           <div className="flex space-x-2">
             <Button variant="outline" size="sm" onClick={handleExportInvoice}>
+              <FileDown className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrintInvoice}>
+              <Printer className="h-4 w-4 mr-2" />
               Print
             </Button>
           </div>
@@ -201,10 +211,13 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
                 <TableHead className="text-right">Base</TableHead>
                 <TableHead className="text-right">Add-ons</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                {allowRecalculation && (
+                  <TableHead className="w-[40px]"></TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoice.items.map((item) => (
+              {invoice.items.map((item, index) => (
                 <TableRow key={item.orderId} className="animate-slide-in">
                   <TableCell className="font-mono text-xs">
                     {item.orderId.includes(', ') 
@@ -216,13 +229,46 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
                   <TableCell className="max-w-[300px]">
                     <div className="truncate">{item.pickup}</div>
                     <div className="truncate text-muted-foreground text-xs mt-1">to: {item.dropoff}</div>
+                    {item.timeWindow && (
+                      <div className="text-xs flex items-center mt-1 text-muted-foreground">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {item.timeWindow}
+                      </div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right">{item.distance.toFixed(1)} mi</TableCell>
+                  <TableCell className="text-right relative">
+                    {item.distance.toFixed(1)} mi
+                    {item.recalculated && item.originalDistance && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-xs text-amber-500 absolute top-0 right-0 transform -translate-y-1/2">*</span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">Manually adjusted from {item.originalDistance.toFixed(1)} mi</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right capitalize">{item.routeType}</TableCell>
                   <TableCell className="text-right">{item.stops}</TableCell>
                   <TableCell className="text-right">${item.baseCost.toFixed(2)}</TableCell>
                   <TableCell className="text-right">${item.addOns.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-medium">${item.totalCost.toFixed(2)}</TableCell>
+                  {allowRecalculation && (
+                    <TableCell>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6" 
+                        onClick={() => onRecalculateDistance?.(index, item.distance)}
+                        title="Recalculate distance"
+                      >
+                        <CalculatorIcon className="h-3 w-3" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -241,6 +287,13 @@ export const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoice }) => {
                   <TableCell className="font-medium">Total Cost</TableCell>
                   <TableCell className="text-right font-bold">${invoice.totalCost.toFixed(2)}</TableCell>
                 </TableRow>
+                {invoice.recalculatedCount && (
+                  <TableRow>
+                    <TableCell className="text-xs text-muted-foreground italic" colSpan={2}>
+                      * {invoice.recalculatedCount} route{invoice.recalculatedCount > 1 ? 's' : ''} manually adjusted
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

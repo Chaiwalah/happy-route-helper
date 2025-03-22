@@ -1,6 +1,6 @@
 
 import { DeliveryOrder } from './csvParser';
-import { Invoice, InvoiceItem, Issue } from './invoiceTypes';
+import { Invoice, InvoiceItem, Issue, InvoiceGenerationSettings } from './invoiceTypes';
 import { organizeOrdersIntoRoutes } from './routeOrganizer';
 import { calculateMultiStopRouteDistance } from './routeDistanceCalculator';
 import { calculateInvoiceCosts } from './invoicePricing';
@@ -11,10 +11,25 @@ import { detectIssues } from './issueDetector';
 export type { Issue, InvoiceItem, DriverSummary, Invoice } from './invoiceTypes';
 export { detectIssues } from './issueDetector';
 
-export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice> => {
+// Default settings for invoice generation
+const defaultSettings: InvoiceGenerationSettings = {
+  allowManualDistanceAdjustment: true,
+  flagDriverLoadThreshold: 10,
+  flagDistanceThreshold: 50,
+  flagTimeWindowThreshold: 30
+};
+
+export const generateInvoice = async (
+  orders: DeliveryOrder[], 
+  settings: Partial<InvoiceGenerationSettings> = {}
+): Promise<Invoice> => {
+  // Merge default settings with provided settings
+  const effectiveSettings = { ...defaultSettings, ...settings };
+  
   // Format date for invoice 
   const today = new Date();
   const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const timestamp = today.toISOString();
   
   // Organize orders into routes by TripNumber, driver, and date
   const routes = organizeOrdersIntoRoutes(orders);
@@ -49,6 +64,25 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     const pickup = pickupLocations.join(' → ');
     const dropoff = dropoffLocations.join(' → ');
     
+    // Create time window information
+    const timeWindows = routeOrders.map(order => {
+      const start = order.timeWindowStart || order.exReadyTime;
+      const end = order.timeWindowEnd || order.exDeliveryTime;
+      if (start && end) {
+        return `${start} - ${end}`;
+      } else if (start) {
+        return `From ${start}`;
+      } else if (end) {
+        return `Until ${end}`;
+      }
+      return '';
+    }).filter(Boolean);
+    
+    const timeWindow = timeWindows.length > 0 ? timeWindows.join(' | ') : undefined;
+    
+    // Store all order IDs separately for multi-stop routes
+    const orderIds = routeType === 'multi-stop' ? routeOrders.map(order => order.id) : undefined;
+    
     // Create a single invoice item for the entire route
     items.push({
       orderId: combinedOrderId,
@@ -60,7 +94,9 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
       routeType,
       baseCost,
       addOns,
-      totalCost
+      totalCost,
+      timeWindow,
+      orderIds
     });
   }
   
@@ -76,6 +112,79 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
     items,
     totalDistance,
     totalCost,
-    driverSummaries
+    driverSummaries,
+    status: 'draft',
+    lastModified: timestamp
+  };
+};
+
+// Function to manually recalculate an invoice item's distance and cost
+export const recalculateInvoiceItem = (
+  invoice: Invoice, 
+  itemIndex: number, 
+  newDistance: number
+): Invoice => {
+  if (itemIndex < 0 || itemIndex >= invoice.items.length) {
+    console.error('Invalid item index for recalculation');
+    return invoice;
+  }
+  
+  const updatedInvoice = { ...invoice };
+  const item = { ...updatedInvoice.items[itemIndex] };
+  
+  // Store original distance if this is the first recalculation
+  if (!item.recalculated) {
+    item.originalDistance = item.distance;
+  }
+  
+  // Update distance and recalculation flags
+  item.distance = newDistance;
+  item.recalculated = true;
+  
+  // Recalculate costs based on new distance
+  const { baseCost, addOns, totalCost } = calculateInvoiceCosts(
+    item.routeType, 
+    newDistance, 
+    item.stops
+  );
+  
+  item.baseCost = baseCost;
+  item.addOns = addOns;
+  item.totalCost = totalCost;
+  
+  // Update item in the invoice
+  updatedInvoice.items[itemIndex] = item;
+  
+  // Recalculate invoice totals
+  updatedInvoice.totalDistance = updatedInvoice.items.reduce((sum, i) => sum + i.distance, 0);
+  updatedInvoice.totalCost = updatedInvoice.items.reduce((sum, i) => sum + i.totalCost, 0);
+  
+  // Update recalculated count
+  updatedInvoice.recalculatedCount = (updatedInvoice.recalculatedCount || 0) + 1;
+  
+  // Update last modified timestamp
+  updatedInvoice.lastModified = new Date().toISOString();
+  
+  // Regenerate driver summaries with updated data
+  updatedInvoice.driverSummaries = generateDriverSummaries(updatedInvoice.items);
+  
+  return updatedInvoice;
+};
+
+// Function to finalize the invoice
+export const finalizeInvoice = (invoice: Invoice): Invoice => {
+  return {
+    ...invoice,
+    status: 'finalized',
+    lastModified: new Date().toISOString()
+  };
+};
+
+// Function to mark invoice as reviewed
+export const reviewInvoice = (invoice: Invoice): Invoice => {
+  return {
+    ...invoice,
+    status: 'reviewed',
+    lastModified: new Date().toISOString()
   };
 };
