@@ -60,30 +60,47 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
     
     // Enhanced processing to identify orders with issues
     const ordersWithTripNumberIssues = processedOrders.filter(order => {
-      // Check each order for potential issues and fix any false positive flags
+      // Ensure missingFields exists and is an array
+      if (!order.missingFields) {
+        order.missingFields = [];
+      }
       
       // First, ensure we handle trip number validation correctly
       if (order.tripNumber && order.tripNumber.trim() !== '') {
         // If trip number exists and is flagged as missing (false positive), fix it
-        if (order.missingFields && order.missingFields.includes('tripNumber')) {
+        if (order.missingFields.includes('tripNumber')) {
           // This fixes the case where trip number exists but was marked as missing
           order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
           console.log(`Fixed false positive: Order ${order.id} has Trip Number "${order.tripNumber}" but was incorrectly marked as missing`);
+        }
+        
+        // Check if it's a noise/test value
+        if (isNoiseOrTestTripNumber(order.tripNumber)) {
+          if (!order.missingFields.includes('tripNumber')) {
+            order.missingFields.push('tripNumber');
+            console.log(`Added missing field flag: Order ${order.id} has noise Trip Number "${order.tripNumber}"`);
+          }
+        }
+      } else {
+        // If trip number is missing, ensure it's flagged
+        if (!order.missingFields.includes('tripNumber')) {
+          order.missingFields.push('tripNumber');
+          console.log(`Added missing field flag: Order ${order.id} has missing Trip Number`);
         }
       }
       
       // Similar check for driver - preserve actual driver values
       if (order.driver && order.driver.trim() !== '' && 
           order.driver !== 'Unassigned' &&
-          order.missingFields && order.missingFields.includes('driver')) {
+          order.missingFields.includes('driver')) {
         // If we have a non-empty driver but it's flagged as missing, remove it from missingFields
         order.missingFields = order.missingFields.filter(field => field !== 'driver');
         console.log(`Fixed false positive: Order ${order.id} has Driver "${order.driver}" but was incorrectly marked as missing`);
-      }
-      
-      // Ensure missingFields exists
-      if (!order.missingFields) {
-        order.missingFields = [];
+      } else if ((!order.driver || order.driver.trim() === '' || order.driver === 'Unassigned') &&
+                !order.missingFields.includes('driver')) {
+        // If driver is missing but not flagged, add the flag
+        order.missingFields.push('driver');
+        console.log(`Added missing field flag: Order ${order.id} has missing Driver`);
       }
       
       // Additional check for "N/A" as a trip number - mark as missing or noise
@@ -97,15 +114,6 @@ export const useOrderVerification = ({ orders, onOrdersVerified }: UseOrderVerif
         if (!order.missingFields.includes('tripNumber')) {
           order.missingFields.push('tripNumber');
           console.log(`Marked Order ${order.id} with Trip Number "${order.tripNumber}" as missing trip number`);
-        }
-      }
-      
-      // Final check for noise/test trip numbers
-      if (order.tripNumber && isNoiseOrTestTripNumber(order.tripNumber)) {
-        // Flag orders with test/noise trip numbers
-        if (!order.missingFields.includes('tripNumber')) {
-          order.missingFields.push('tripNumber');
-          console.log(`Marked Order ${order.id} with noise/test Trip Number "${order.tripNumber}" as missing trip number`);
         }
       }
       
