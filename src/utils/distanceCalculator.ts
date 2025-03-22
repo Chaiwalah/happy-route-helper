@@ -5,6 +5,7 @@ import { toast } from '@/components/ui/use-toast';
 
 // Maximum time to wait for a distance calculation (in milliseconds)
 const CALCULATION_TIMEOUT = 10000; // 10 seconds
+const MAX_RETRIES = 2; // Maximum number of retries for failed calculations
 
 export const calculateDistances = async (
   orders: DeliveryOrder[]
@@ -15,70 +16,91 @@ export const calculateDistances = async (
   // Create a copy of the orders to avoid mutation
   const updatedOrders = [...orders];
   
-  // Process orders in batches to avoid overwhelming the API
-  const batchSize = 5;
-  const batches = [];
-  
-  for (let i = 0; i < updatedOrders.length; i += batchSize) {
-    batches.push(updatedOrders.slice(i, i + batchSize));
-  }
-  
   let completedCount = 0;
   const totalCount = updatedOrders.length;
   
-  // Process batches sequentially to avoid API rate limits
-  for (const batch of batches) {
-    // Process each batch in parallel
-    await Promise.all(
-      batch.map(async (order) => {
-        try {
-          // Check if the CSV already has a distance field
-          if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
-            order.estimatedDistance = parseFloat(order.distance.toString());
+  // Set up batching - now processing in parallel with a concurrency limit
+  const concurrencyLimit = 3; // Maximum number of concurrent API calls
+  const orderBatches = [];
+  
+  // Create smaller batches for parallel processing
+  for (let i = 0; i < updatedOrders.length; i += concurrencyLimit) {
+    orderBatches.push(updatedOrders.slice(i, i + concurrencyLimit));
+  }
+  
+  // Process each batch sequentially to avoid overwhelming the API
+  for (const batch of orderBatches) {
+    try {
+      // Process orders in this batch concurrently
+      await Promise.all(
+        batch.map(async (order) => {
+          try {
+            // Already has a distance? Skip calculation
+            if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
+              order.estimatedDistance = parseFloat(order.distance.toString());
+              completedCount++;
+              logProgress(completedCount, totalCount);
+              return;
+            }
+            
+            // Try to calculate distance using Mapbox if both pickup and dropoff are available
+            if (order.pickup && order.dropoff) {
+              for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                  // Add timeout to prevent hanging on slow API responses
+                  const routeDistance = await Promise.race([
+                    calculateRouteDistance([order.pickup, order.dropoff]),
+                    new Promise<null>((_, reject) => 
+                      setTimeout(() => reject(new Error('Distance calculation timeout')), CALCULATION_TIMEOUT)
+                    )
+                  ]);
+                  
+                  if (routeDistance !== null) {
+                    order.estimatedDistance = Number(routeDistance.toFixed(1));
+                    completedCount++;
+                    logProgress(completedCount, totalCount);
+                    break; // Success, exit retry loop
+                  }
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                  // Last attempt? Log error and use default
+                  if (attempt === MAX_RETRIES) {
+                    console.error(`Failed to calculate distance for order ${order.id} after ${MAX_RETRIES + 1} attempts: ${errorMessage}`);
+                    order.estimatedDistance = generateDefaultDistance();
+                    completedCount++;
+                    logProgress(completedCount, totalCount);
+                  } else {
+                    // Not last attempt, wait briefly before retry
+                    console.warn(`Attempt ${attempt + 1} failed for order ${order.id}: ${errorMessage}. Retrying...`);
+                    await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retry
+                  }
+                }
+              }
+            } else {
+              // Missing pickup or dropoff, use default
+              console.warn(`Missing pickup or dropoff for order ${order.id}, using default distance`);
+              order.estimatedDistance = generateDefaultDistance();
+              completedCount++;
+              logProgress(completedCount, totalCount);
+            }
+          } catch (error) {
+            console.error(`Unexpected error processing order ${order.id}:`, error);
+            // Ensure we still set a distance even in case of errors
+            order.estimatedDistance = generateDefaultDistance();
             completedCount++;
             logProgress(completedCount, totalCount);
-            return;
           }
-          
-          // Try to calculate distance using Mapbox if both pickup and dropoff are available
-          if (order.pickup && order.dropoff) {
-            try {
-              // Add timeout to prevent hanging on slow API responses
-              const routeDistance = await Promise.race([
-                calculateRouteDistance([order.pickup, order.dropoff]),
-                new Promise<null>((_, reject) => 
-                  setTimeout(() => reject(new Error('Distance calculation timeout')), CALCULATION_TIMEOUT)
-                )
-              ]);
-              
-              if (routeDistance !== null) {
-                order.estimatedDistance = Number(routeDistance.toFixed(1));
-                completedCount++;
-                logProgress(completedCount, totalCount);
-                return;
-              }
-            } catch (error) {
-              console.error(`Error calculating distance for order ${order.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          }
-          
-          // Fallback to a default distance if API call fails or addresses are missing
-          order.estimatedDistance = generateDefaultDistance();
-          completedCount++;
-          logProgress(completedCount, totalCount);
-        } catch (error) {
-          console.error(`Unexpected error processing order ${order.id}:`, error);
-          // Ensure we still set a distance even in case of errors
-          order.estimatedDistance = generateDefaultDistance();
-          completedCount++;
-          logProgress(completedCount, totalCount);
-        }
-      })
-    );
+        })
+      );
+    } catch (batchError) {
+      console.error("Batch processing error:", batchError);
+      // Continue with next batch even if one fails
+    }
   }
   
   const endTime = performance.now();
-  console.log(`Distance calculations completed in ${((endTime - startTime) / 1000).toFixed(2)} seconds`);
+  const totalTimeSeconds = ((endTime - startTime) / 1000).toFixed(2);
+  console.log(`Distance calculations completed in ${totalTimeSeconds} seconds`);
   
   return updatedOrders;
 };
@@ -92,24 +114,4 @@ const logProgress = (current: number, total: number) => {
 // Generate a default distance if real calculation fails
 const generateDefaultDistance = (): number => {
   return Math.round((5 + Math.random() * 10) * 10) / 10; // 5-15 miles
-};
-
-// Helper function to wrap API calls with a timeout
-const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
-  return new Promise<T>((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error(`Operation timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-    
-    promise.then(
-      (result) => {
-        clearTimeout(timeoutId);
-        resolve(result);
-      },
-      (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      }
-    );
-  });
 };

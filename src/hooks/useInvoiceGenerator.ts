@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from '@/components/ui/use-toast';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { 
@@ -18,6 +17,7 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, percent: 0 });
   const [settings, setSettings] = useState<InvoiceGenerationSettings>({
     allowManualDistanceAdjustment: true,
     flagDriverLoadThreshold: 10,
@@ -34,6 +34,12 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
     contactPerson: ''
   });
 
+  // Setup progress updates
+  const updateProgress = useCallback((current: number, total: number) => {
+    const percent = Math.round((current / total) * 100);
+    setProgress({ current, total, percent });
+  }, []);
+
   const handleGenerateInvoice = async () => {
     if (orders.length === 0) {
       toast({
@@ -45,19 +51,30 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
     }
     
     setIsGenerating(true);
+    setProgress({ current: 0, total: orders.length, percent: 0 });
     
     // Show a toast to indicate that generation has started
-    const toastId = toast({
+    toast({
       title: "Generating invoice",
-      description: `Calculating routes for ${orders.length} orders. This may take a moment for larger datasets...`,
+      description: `Calculating routes for ${orders.length} orders. This may take a moment...`,
     });
     
     const startTime = performance.now();
     console.log(`Starting invoice generation for ${orders.length} orders`);
     
+    // Set up a timeout to check for long-running operations
+    const timeout = setTimeout(() => {
+      if (isGenerating) {
+        toast({
+          title: "Still working...",
+          description: "Distance calculations are taking longer than expected. Please wait...",
+        });
+      }
+    }, 10000); // 10 seconds
+    
     try {
       // Generate invoice with proper route batching by Trip Number
-      const generatedInvoice = await generateInvoice(orders, settings);
+      const generatedInvoice = await generateInvoice(orders, settings, updateProgress);
       
       const endTime = performance.now();
       console.log(`Invoice generation completed in ${((endTime - startTime) / 1000).toFixed(2)} seconds`);
@@ -99,7 +116,9 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
         variant: "destructive",
       });
     } finally {
+      clearTimeout(timeout);
       setIsGenerating(false);
+      setProgress({ current: 0, total: 0, percent: 0 });
     }
   };
   
@@ -204,6 +223,7 @@ export function useInvoiceGenerator(orders: DeliveryOrder[]) {
     issues,
     isGenerating,
     settings,
+    progress,
     showExportDialog,
     showMetadataDialog,
     itemToRecalculate,

@@ -1,3 +1,4 @@
+
 // Mapbox service for geocoding and directions
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw';
 
@@ -15,6 +16,9 @@ const geocodingCache: GeocodingCache = {};
 // Cache for route distances to avoid duplicate calculations
 const routeDistanceCache: { [key: string]: number | null } = {};
 
+// Track failed addresses to avoid repeated failures
+const failedAddresses = new Set<string>();
+
 // Convert an address string to coordinates
 export const geocodeAddress = async (address: string): Promise<{longitude: number, latitude: number} | null> => {
   if (!address || address.trim() === '') {
@@ -27,11 +31,18 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
     return geocodingCache[address];
   }
   
+  // Skip addresses that have repeatedly failed
+  if (failedAddresses.has(address)) {
+    console.warn(`Skipping previously failed address: ${address}`);
+    return null;
+  }
+  
   try {
     console.log(`Geocoding address: ${address}`);
     const encodedAddress = encodeURIComponent(address);
     const response = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`,
+      { signal: AbortSignal.timeout(8000) } // Add timeout to fetch to prevent hanging
     );
     
     if (!response.ok) {
@@ -52,11 +63,19 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
     } else {
       console.warn(`No geocoding results for address: ${address}`);
       geocodingCache[address] = null;
+      failedAddresses.add(address); // Mark as failed
       return null;
     }
   } catch (error) {
     console.error('Error geocoding address:', error);
-    // Keep cache empty so we can retry later
+    
+    // Add to failed addresses if it's a persistent issue
+    if (error instanceof Error && 
+       (error.message.includes('timeout') || error.message.includes('network'))) {
+      failedAddresses.add(address);
+    }
+    
+    // Cache failures too (but as null)
     geocodingCache[address] = null;
     return null;
   }
@@ -91,7 +110,7 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
   // Check if any geocoding failed
   if (coordinates.some(coord => coord === null)) {
     console.warn('One or more addresses could not be geocoded');
-    // Don't cache failed routes so we can retry later
+    routeDistanceCache[routeKey] = null; // Cache the failure
     return null;
   }
   
@@ -103,7 +122,8 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
       .join(';');
     
     const response = await fetch(
-      `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${MAPBOX_TOKEN}`
+      `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${MAPBOX_TOKEN}`,
+      { signal: AbortSignal.timeout(8000) } // Add timeout
     );
     
     if (!response.ok) {
@@ -126,7 +146,8 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
     }
   } catch (error) {
     console.error('Error calculating route distance:', error);
-    // Don't cache failed routes so we can retry later
+    // Cache failed routes too
+    routeDistanceCache[routeKey] = null;
     return null;
   }
 };
@@ -134,4 +155,11 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
 // Convert meters to miles
 export const metersToMiles = (meters: number): number => {
   return meters / 1609.34;
+};
+
+// Clear caches (useful for testing)
+export const clearCaches = () => {
+  for (const key in geocodingCache) delete geocodingCache[key];
+  for (const key in routeDistanceCache) delete routeDistanceCache[key];
+  failedAddresses.clear();
 };

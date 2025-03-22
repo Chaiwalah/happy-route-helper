@@ -28,6 +28,7 @@ import { ExportDialog } from '@/components/invoice/ExportDialog';
 import { InvoiceHeader } from '@/components/invoice/InvoiceHeader';
 import { InvoiceActions } from '@/components/invoice/InvoiceActions';
 import { useInvoiceGenerator } from '@/hooks/useInvoiceGenerator';
+import { Progress } from "@/components/ui/progress";
 
 interface InvoiceGeneratorProps {
   orders: DeliveryOrder[];
@@ -39,6 +40,7 @@ export function InvoiceGeneratorMain({ orders }: InvoiceGeneratorProps) {
     issues,
     isGenerating,
     settings,
+    progress,
     showExportDialog,
     showMetadataDialog,
     itemToRecalculate,
@@ -83,6 +85,17 @@ export function InvoiceGeneratorMain({ orders }: InvoiceGeneratorProps) {
           </Button>
         </div>
       </div>
+      
+      {/* Generation Progress */}
+      {isGenerating && progress.total > 0 && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Calculating distances...</span>
+            <span>{progress.current} of {progress.total} ({progress.percent}%)</span>
+          </div>
+          <Progress value={progress.percent} className="h-2" />
+        </div>
+      )}
       
       {invoice && (
         <>
