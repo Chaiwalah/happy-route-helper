@@ -47,19 +47,8 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
       // Get individual order distance, default to 0 if not available
       const orderDistance = order.estimatedDistance || 0;
       
-      // For multi-stop routes with assigned drivers, distribute costs evenly
-      // For unassigned orders, each is already its own route (single order)
-      let itemBaseCost = baseCost;
-      let itemAddOns = addOns;
-      let itemTotalCost = totalCost;
-      
-      if (routeType === 'multi-stop' && driver !== 'Unassigned') {
-        // Distribute the costs evenly among orders in the route
-        itemBaseCost = baseCost / stops;
-        itemAddOns = addOns / stops;
-        itemTotalCost = totalCost / stops;
-      }
-      
+      // For multi-stop routes, show the full route cost on each order
+      // No more cost distribution among orders
       items.push({
         orderId: order.id,
         driver,
@@ -68,9 +57,9 @@ export const generateInvoice = async (orders: DeliveryOrder[]): Promise<Invoice>
         distance: orderDistance,
         stops,
         routeType,
-        baseCost: itemBaseCost,
-        addOns: itemAddOns,
-        totalCost: itemTotalCost
+        baseCost: baseCost,
+        addOns: addOns,
+        totalCost: totalCost
       });
     });
   }
