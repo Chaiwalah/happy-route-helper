@@ -70,8 +70,8 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
       }
     });
     
-    // Add a random estimated distance if not provided
-    if (order.pickup && order.dropoff && !order.estimatedDistance) {
+    // Add a random estimated distance if not provided (and if we have pickup/dropoff data)
+    if ((order.pickup || order.dropoff) && !order.estimatedDistance) {
       // Generate a random distance between 1 and 20 miles
       order.estimatedDistance = Math.round((1 + Math.random() * 19) * 10) / 10;
     }

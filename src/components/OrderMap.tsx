@@ -1,4 +1,6 @@
 
+"use client"
+
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -159,14 +161,14 @@ const OrderMap = ({ orders }: OrderMapProps) => {
       // Create a batch of promises for all geocoding requests
       const geocodePromises = [];
       
-      // Process pickup addresses
+      // Process pickup addresses - adding null checks
       for (const order of orders) {
         if (order.pickup) {
           geocodePromises.push(
             geocodeAddress(order.pickup).then(coords => {
               if (coords) {
                 mapLocations.current.push({
-                  id: order.id,
+                  id: order.id || 'unknown',
                   type: 'pickup',
                   address: order.pickup,
                   driver: order.driver || 'Unassigned',
@@ -183,7 +185,7 @@ const OrderMap = ({ orders }: OrderMapProps) => {
             geocodeAddress(order.dropoff).then(coords => {
               if (coords) {
                 mapLocations.current.push({
-                  id: order.id,
+                  id: order.id || 'unknown',
                   type: 'dropoff',
                   address: order.dropoff,
                   driver: order.driver || 'Unassigned',
