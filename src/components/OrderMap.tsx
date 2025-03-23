@@ -1,13 +1,15 @@
 
 "use client"
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
-import { MapPin, AlertCircle, Info } from 'lucide-react';
+import { MapPin, Info } from 'lucide-react';
 import { MapLegend } from '@/components/map/MapLegend';
 import { TokenInput } from '@/components/map/TokenInput';
 import { useMapbox } from '@/hooks/useMapbox';
+import { toast } from '@/components/ui/use-toast';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface OrderMapProps {
   orders: DeliveryOrder[];
@@ -32,11 +34,23 @@ const OrderMap: React.FC<OrderMapProps> = ({
     driverRoutes,
     mapLocations,
     handleTokenSave,
-    geocodeAddresses
+    geocodeAddresses,
+    mapLoadError
   } = useMapbox(orders, showRoutes, selectedDriver, selectedDate);
 
-  // Render the token input if no token is available
-  if (!mapboxToken) {
+  // Try to reinitialize map if there was an error
+  useEffect(() => {
+    if (mapLoadError && mapboxToken) {
+      toast({
+        title: "Map failed to load",
+        description: "Please check your Mapbox token and try again",
+        variant: "destructive",
+      });
+    }
+  }, [mapLoadError, mapboxToken]);
+
+  // Render the token input if no token is available or if map failed to load
+  if (!mapboxToken || mapLoadError) {
     return (
       <TokenInput 
         mapboxToken={mapboxToken} 

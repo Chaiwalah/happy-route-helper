@@ -1,6 +1,5 @@
-
 // Mapbox service for geocoding and directions
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw';
+const MAPBOX_TOKEN = '';
 
 // Coordinate type to ensure consistent usage
 export type Coordinates = [number, number]; // [longitude, latitude]
@@ -46,9 +45,9 @@ const processQueue = async () => {
   }
 };
 
-// Get the mapbox token (default or from localStorage)
+// Get the mapbox token (from localStorage)
 export const getMapboxToken = (): string => {
-  return localStorage.getItem('mapbox_token') || MAPBOX_TOKEN;
+  return localStorage.getItem('mapbox_token') || '';
 };
 
 // Convert an address string to coordinates
@@ -68,13 +67,18 @@ export const geocodeAddress = async (address: string): Promise<Coordinates | nul
     console.warn(`Skipping previously failed address: ${address}`);
     return null;
   }
+
+  const token = getMapboxToken();
+  if (!token) {
+    console.error('No Mapbox token available for geocoding');
+    return null;
+  }
   
   // Create a promise that will be resolved when this request is processed
   return new Promise((resolve) => {
     const performRequest = async () => {
       try {
         console.log(`Geocoding address: ${address}`);
-        const token = getMapboxToken();
         const encodedAddress = encodeURIComponent(address);
         const response = await fetch(
           `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${token}`,
@@ -128,6 +132,37 @@ export const geocodeAddress = async (address: string): Promise<Coordinates | nul
   });
 };
 
+// Get a fixed color for a driver to ensure consistency
+export const getDriverColor = (driverName: string): string => {
+  // Hash the driver name to get a consistent value
+  let hash = 0;
+  for (let i = 0; i < driverName.length; i++) {
+    hash = driverName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // List of distinct, visually pleasing colors
+  const colors = [
+    '#3498db', // blue
+    '#2ecc71', // green
+    '#e74c3c', // red
+    '#9b59b6', // purple
+    '#f1c40f', // yellow
+    '#1abc9c', // teal
+    '#d35400', // orange
+    '#34495e', // dark blue
+    '#16a085', // green blue
+    '#c0392b', // dark red
+    '#8e44ad', // dark purple
+    '#f39c12', // dark yellow
+    '#27ae60', // dark green
+    '#2980b9', // dark blue
+  ];
+  
+  // Use the hash to select a color
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+};
+
 // Generate a cache key for routes
 const getRouteKey = (coordinates: Coordinates[]): string => {
   return coordinates.map(coord => coord.join(',')).join('|');
@@ -150,6 +185,12 @@ export const getRouteGeometry = async (coordinates: Coordinates[]): Promise<any 
   
   console.log(`Getting route geometry between ${coordinates.length} coordinates`);
   
+  const token = getMapboxToken();
+  if (!token) {
+    console.error('No Mapbox token available for route geometry');
+    return null;
+  }
+  
   // Create a promise that will be resolved when this request is processed
   return new Promise((resolve) => {
     const performRequest = async () => {
@@ -159,7 +200,6 @@ export const getRouteGeometry = async (coordinates: Coordinates[]): Promise<any 
           .map(coord => `${coord[0]},${coord[1]}`)
           .join(';');
         
-        const token = getMapboxToken();
         const response = await fetch(
           `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&overview=full&access_token=${token}`,
           { signal: AbortSignal.timeout(5000) }
@@ -213,6 +253,12 @@ export const calculateRouteDistance = async (coordinates: Coordinates[]): Promis
     return routeDistanceCache[routeKey];
   }
   
+  const token = getMapboxToken();
+  if (!token) {
+    console.error('No Mapbox token available for route distance');
+    return null;
+  }
+  
   // If this is a multi-stop route (more than 2 coordinates), 
   // estimate the distance as a sum of pairs to avoid expensive API calls
   if (coordinates.length > 2) {
@@ -249,7 +295,6 @@ export const calculateRouteDistance = async (coordinates: Coordinates[]): Promis
           .map(coord => `${coord[0]},${coord[1]}`)
           .join(';');
         
-        const token = getMapboxToken();
         const response = await fetch(
           `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${token}`,
           { signal: AbortSignal.timeout(5000) }
@@ -308,35 +353,4 @@ export const clearCaches = () => {
   for (const key in routeDistanceCache) delete routeDistanceCache[key];
   for (const key in routeGeometryCache) delete routeGeometryCache[key];
   failedAddresses.clear();
-};
-
-// Get a fixed color for a driver to ensure consistency
-export const getDriverColor = (driverName: string): string => {
-  // Hash the driver name to get a consistent value
-  let hash = 0;
-  for (let i = 0; i < driverName.length; i++) {
-    hash = driverName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  // List of distinct, visually pleasing colors
-  const colors = [
-    '#3498db', // blue
-    '#2ecc71', // green
-    '#e74c3c', // red
-    '#9b59b6', // purple
-    '#f1c40f', // yellow
-    '#1abc9c', // teal
-    '#d35400', // orange
-    '#34495e', // dark blue
-    '#16a085', // green blue
-    '#c0392b', // dark red
-    '#8e44ad', // dark purple
-    '#f39c12', // dark yellow
-    '#27ae60', // dark green
-    '#2980b9', // dark blue
-  ];
-  
-  // Use the hash to select a color
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
 };

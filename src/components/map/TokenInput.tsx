@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
+import { toast } from '@/components/ui/use-toast';
 
 interface TokenInputProps {
   mapboxToken: string;
@@ -15,6 +16,31 @@ export const TokenInput: React.FC<TokenInputProps> = ({
   setMapboxToken,
   handleTokenSave
 }) => {
+  const [token, setToken] = useState(mapboxToken || '');
+  const [tokenValid, setTokenValid] = useState(false);
+
+  // Validate token format when it changes
+  useEffect(() => {
+    // Basic Mapbox token format validation (starts with 'pk.')
+    setTokenValid(token.trim().startsWith('pk.') && token.length > 20);
+  }, [token]);
+
+  const onSave = () => {
+    if (!tokenValid) {
+      toast({
+        title: "Invalid token format",
+        description: "Please enter a valid Mapbox public token (starts with 'pk.')",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setMapboxToken(token);
+    setTimeout(() => {
+      handleTokenSave();
+    }, 100);
+  }
+  
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="space-y-2">
@@ -45,12 +71,12 @@ export const TokenInput: React.FC<TokenInputProps> = ({
         <div className="flex space-x-2">
           <Input
             type="text"
-            placeholder="Enter your Mapbox token"
-            value={mapboxToken}
-            onChange={(e) => setMapboxToken(e.target.value)}
+            placeholder="Enter your Mapbox token (starts with pk.)"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
             className="flex-1"
           />
-          <Button onClick={handleTokenSave}>Save & Load Map</Button>
+          <Button onClick={onSave} disabled={!tokenValid}>Save & Load Map</Button>
         </div>
       </div>
     </div>

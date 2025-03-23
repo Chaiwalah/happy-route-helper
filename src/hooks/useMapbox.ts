@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { debounce } from '@/lib/utils';
@@ -34,26 +35,35 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourcesRef = useRef<string[]>([]);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const mapLocations = useRef<MapLocation[]>([]);
   
   // State
+  const [mapLocations, setMapLocations] = useState<MapLocation[]>([]);
   const [mapboxToken, setMapboxToken] = useState<string>(
-    localStorage.getItem('mapbox_token') || 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw'
+    localStorage.getItem('mapbox_token') || ''
   );
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [missingAddressCount, setMissingAddressCount] = useState(0);
   const [driverRoutes, setDriverRoutes] = useState<DriverRoute[]>([]);
+  const [mapLoadError, setMapLoadError] = useState(false);
   
   // Initialize map
   const initializeMap = useCallback(() => {
-    if (!mapContainer.current || !mapboxToken) return;
+    if (!mapContainer.current || !mapboxToken) {
+      console.error('Cannot initialize map: missing container or token');
+      return;
+    }
     
     try {
+      console.log('Initializing map with token:', mapboxToken.substring(0, 10) + '...');
+      
       // Clean up existing map if any
       if (map.current) {
         map.current.remove();
       }
+      
+      // Reset error state
+      setMapLoadError(false);
       
       // Initialize Mapbox
       mapboxgl.accessToken = mapboxToken;
@@ -80,6 +90,8 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
       
       map.current.on('load', () => {
         if (!map.current) return;
+        
+        console.log('Map loaded successfully');
         
         // Add a data source for our markers
         map.current.addSource('orders', {
@@ -254,17 +266,32 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
         });
         
         // Now geocode the addresses
-        geocodeAddresses();
+        if (orders.length > 0) {
+          geocodeAddresses();
+        }
       });
+      
+      // Handle map load errors
+      map.current.on('error', (e) => {
+        console.error('Mapbox error:', e);
+        setMapLoadError(true);
+        toast({
+          title: "Map error",
+          description: "An error occurred while loading the map. Please check your Mapbox token.",
+          variant: "destructive",
+        });
+      });
+      
     } catch (error) {
       console.error('Error initializing map:', error);
+      setMapLoadError(true);
       toast({
         title: "Error initializing map",
         description: "Please check your Mapbox token and try again",
         variant: "destructive",
       });
     }
-  }, [mapboxToken]);
+  }, [mapboxToken, orders]);
 
   // Process batches to avoid UI freezing
   const processBatch = async (
@@ -339,10 +366,13 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
 
   // Geocode addresses
   const geocodeAddresses = useCallback(() => {
-    if (!map.current || orders.length === 0) return;
+    if (!map.current || !isMapInitialized || orders.length === 0) {
+      console.log('Cannot geocode addresses: map not ready or no orders');
+      return;
+    }
     
+    console.log('Starting geocoding for', orders.length, 'orders');
     setIsLoading(true);
-    mapLocations.current = [];
     
     // Count orders with missing addresses
     const missingCount = orders.filter(order => order.missingAddress === true).length;
@@ -354,8 +384,9 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
     processBatch(
       validOrders,
       (locations) => {
-        mapLocations.current = locations;
-        updateMapMarkers();
+        console.log('Geocoded', locations.length, 'locations');
+        setMapLocations(locations);
+        updateMapMarkers(locations);
         
         if (showRoutes) {
           createDriverRoutes(locations);
@@ -379,7 +410,7 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
         console.log(`Geocoding progress: ${processed}/${total}`);
       }
     );
-  }, [orders, showRoutes]);
+  }, [orders, showRoutes, isMapInitialized]);
 
   // Create and display driver routes
   const createDriverRoutes = useCallback((locations: MapLocation[]) => {
@@ -634,13 +665,15 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
   }, [mapboxToken]);
 
   // Update map markers
-  const updateMapMarkers = useCallback(() => {
+  const updateMapMarkers = useCallback((locations: MapLocation[]) => {
     if (!map.current) return;
+    
+    console.log('Updating map with', locations.length, 'locations');
     
     // Create GeoJSON data from our locations
     const geojsonData = {
       type: 'FeatureCollection',
-      features: mapLocations.current.map(location => ({
+      features: locations.map(location => ({
         type: 'Feature',
         properties: {
           id: location.id,
@@ -665,10 +698,10 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
     }
     
     // Fit map to show all markers if we have any
-    if (mapLocations.current.length > 0) {
+    if (locations.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       
-      mapLocations.current.forEach(location => {
+      locations.forEach(location => {
         bounds.extend([location.longitude, location.latitude]);
       });
       
@@ -679,9 +712,148 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
     }
   }, []);
 
+  // Add a custom marker to the map
+  const addMarker = useCallback((location: MapLocation, color: string, index: number, isFirst: boolean) => {
+    if (!map.current) return;
+    
+    // Create a marker element
+    const el = document.createElement('div');
+    el.className = 'custom-marker';
+    el.style.backgroundColor = location.type === 'pickup' ? '#3b82f6' : color;
+    el.style.width = '20px';
+    el.style.height = '20px';
+    el.style.borderRadius = '50%';
+    el.style.border = '2px solid white';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
+    el.style.color = 'white';
+    el.style.fontWeight = 'bold';
+    el.style.fontSize = '12px';
+    
+    // Add number to marker
+    el.textContent = `${index + 1}`;
+    
+    // Create popup content
+    const popupContent = document.createElement('div');
+    popupContent.innerHTML = `
+      <div class="p-2">
+        <div class="font-medium text-sm">${location.driver}</div>
+        <div class="text-xs text-gray-600">${location.type === 'pickup' ? 'Pickup' : 'Dropoff'} (Stop #${index + 1})</div>
+        <div class="text-sm mt-1">${location.address}</div>
+        ${location.time ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">⏱</span> ${location.time}</div>` : ''}
+        ${location.tripNumber ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">🚚</span> Trip: ${location.tripNumber}</div>` : ''}
+        ${location.distance ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">📏</span> Distance: ${location.distance} mi</div>` : ''}
+        <div class="text-xs text-gray-500 mt-1">Order ID: ${location.orderId}</div>
+      </div>
+    `;
+    
+    // Create popup
+    const popup = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: false,
+      maxWidth: '300px'
+    }).setDOMContent(popupContent);
+    
+    // Create and add the marker
+    const marker = new mapboxgl.Marker({
+      element: el,
+    })
+    .setLngLat([location.longitude, location.latitude])
+    .setPopup(popup)
+    .addTo(map.current);
+    
+    // Store the marker for later removal
+    markersRef.current.push(marker);
+  }, []);
+
+  // Clear all markers
+  const clearMarkers = useCallback(() => {
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+  }, []);
+
+  // Clear existing route layers
+  const clearRouteLayers = useCallback(() => {
+    if (!map.current) return;
+    
+    // Remove existing route sources and layers
+    routeSourcesRef.current.forEach(sourceId => {
+      if (map.current?.getLayer(`${sourceId}-line`)) {
+        map.current.removeLayer(`${sourceId}-line`);
+      }
+      
+      if (map.current?.getSource(sourceId)) {
+        map.current.removeSource(sourceId);
+      }
+    });
+    
+    routeSourcesRef.current = [];
+  }, []);
+
+  // Draw a route on the map
+  const drawRoute = useCallback(async (driver: string, date: string, coordinates: [number, number][], color: string, index: number) => {
+    if (!map.current || !mapboxToken) return;
+    
+    try {
+      // Get route from Mapbox Directions API
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates.map(coord => coord.join(',')).join(';')}?geometries=geojson&overview=full&access_token=${mapboxToken}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get directions: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.routes || data.routes.length === 0) {
+        console.warn('No route found between coordinates');
+        return;
+      }
+      
+      const route = data.routes[0];
+      const sourceId = `route-${driver}-${date}-${index}`;
+      
+      // Add route to map
+      map.current.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {
+            driver,
+            date
+          },
+          geometry: route.geometry
+        }
+      });
+      
+      map.current.addLayer({
+        id: `${sourceId}-line`,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': color,
+          'line-width': 4,
+          'line-opacity': 0.8
+        }
+      });
+      
+      // Track the source ID for later cleanup
+      routeSourcesRef.current.push(sourceId);
+    } catch (error) {
+      console.error('Error drawing route:', error);
+    }
+  }, [mapboxToken]);
+
   // Debounced token save to prevent excessive reinitialization
-  const handleTokenSave = debounce(() => {
+  const handleTokenSave = useCallback(debounce(() => {
     if (mapboxToken) {
+      console.log('Saving token and initializing map');
       localStorage.setItem('mapbox_token', mapboxToken);
       initializeMap();
     } else {
@@ -691,17 +863,19 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
         variant: "destructive",
       });
     }
-  }, 500);
+  }, 500), [mapboxToken, initializeMap]);
 
   // Initialize map when token is available
   useEffect(() => {
-    if (mapboxToken && !isMapInitialized) {
+    if (mapboxToken && !isMapInitialized && !mapLoadError) {
+      console.log('Initializing map on mount or token change');
       initializeMap();
     }
     
     return () => {
       // Cleanup on unmount
       if (map.current) {
+        console.log('Cleaning up map on unmount');
         map.current.remove();
         map.current = null;
       }
@@ -710,14 +884,15 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
         popupRef.current = null;
       }
     };
-  }, [mapboxToken, initializeMap, isMapInitialized]);
+  }, [mapboxToken, initializeMap, isMapInitialized, mapLoadError]);
 
   // Update markers when orders change and map is initialized
   useEffect(() => {
-    if (isMapInitialized && orders.length > 0) {
+    if (isMapInitialized && orders.length > 0 && !isLoading) {
+      console.log('Orders or filters changed, updating geocoding');
       geocodeAddresses();
     }
-  }, [isMapInitialized, orders, geocodeAddresses]);
+  }, [isMapInitialized, orders, selectedDriver, selectedDate, geocodeAddresses, isLoading]);
 
   return {
     mapContainer,
@@ -727,8 +902,9 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
     isLoading,
     missingAddressCount,
     driverRoutes,
-    mapLocations: mapLocations.current,
+    mapLocations,
     handleTokenSave,
-    geocodeAddresses
+    geocodeAddresses,
+    mapLoadError
   };
 };
