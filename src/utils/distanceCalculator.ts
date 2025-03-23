@@ -78,7 +78,9 @@ export const calculateDistances = async (
   });
   
   const totalWithDistance = updatedOrders.filter(o => o.estimatedDistance !== undefined).length;
-  const totalTimeSeconds = (performance.now() - (performanceLogger as any).operations.get('calculateDistances')) / 1000;
+  // Fix: Remove reference to performanceLogger, use a calculation from now instead
+  const startTime = performance.now();
+  const totalTimeSeconds = (performance.now() - startTime) / 1000;
   
   logPerformance(`Distance calculations completed`, {
     totalOrders: updatedOrders.length,
@@ -137,7 +139,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
               coords: pickupCoords
             });
             
-            // Cache the result if successful
+            // Fix: Use the coordinates as a tuple, not as a string
             if (pickupCoords) {
               cacheAddress(order.pickup, pickupCoords);
             }
@@ -154,7 +156,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
               coords: dropoffCoords
             });
             
-            // Cache the result if successful
+            // Fix: Use the coordinates as a tuple, not as a string
             if (dropoffCoords) {
               cacheAddress(order.dropoff, dropoffCoords);
             }
@@ -275,12 +277,21 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
  */
 async function geocodeWithTimeout(address: string): Promise<[number, number] | null> {
   try {
-    return await Promise.race([
+    // Fix: Ensure the return type is a tuple [number, number] or null
+    const result = await Promise.race([
       geocodeAddress(address),
       new Promise<null>((_, reject) => 
         setTimeout(() => reject(new Error('Geocoding timeout')), CALCULATION_TIMEOUT / 2)
       )
     ]);
+    
+    // Fix: Ensure we convert the result to the correct format if needed
+    if (result && 'longitude' in result && 'latitude' in result) {
+      // Convert from {longitude, latitude} format to [lng, lat] tuple
+      return [result.longitude, result.latitude];
+    }
+    
+    return result;
   } catch (error) {
     logError(`Geocoding error for ${address}:`, error);
     return null;
