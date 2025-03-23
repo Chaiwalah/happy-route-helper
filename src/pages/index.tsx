@@ -1,7 +1,7 @@
 
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue } from '@/utils/invoiceTypes';
 import { detectIssues } from '@/utils/issueDetector';
@@ -21,6 +21,7 @@ import { MapTab } from '@/components/tabs/MapTab';
 import { InvoiceTab } from '@/components/tabs/InvoiceTab';
 import { InvestigationTab } from '@/components/tabs/InvestigationTab';
 import { IssuesTab } from '@/components/tabs/IssuesTab';
+import { IncompleteDataTab } from '@/components/tabs/IncompleteDataTab';
 
 // Dialogs
 import { RemoveOrdersDialog } from '@/components/RemoveOrdersDialog';
@@ -33,6 +34,26 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
   const [showDataVerification, setShowDataVerification] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  
+  // Calculate incomplete orders count
+  const incompleteOrdersCount = orders.filter(order => 
+    order.missingFields?.length > 0 || 
+    !order.tripNumber || 
+    order.tripNumber.trim() === '' ||
+    !order.driver ||
+    order.driver.trim() === ''
+  ).length;
+
+  // Auto hide incomplete orders from processing tabs
+  useEffect(() => {
+    if (incompleteOrdersCount > 0 && orders.length > 0 && activeTab === 'upload') {
+      toast({
+        title: "Incomplete data detected",
+        description: `${incompleteOrdersCount} orders with missing data were found. These will be hidden until reviewed.`,
+        variant: "warning",
+      });
+    }
+  }, [incompleteOrdersCount, orders.length, activeTab]);
 
   const handleDataParsed = (parsedOrders: DeliveryOrder[]) => {
     if (parsedOrders.length === 0) {
@@ -46,21 +67,26 @@ const Index = () => {
     
     setOrders(parsedOrders);
     
-    // Move to orders tab after successful upload
-    if (parsedOrders.length > 0) {
-      setActiveTab('orders');
+    // Calculate incomplete orders
+    const ordersWithMissingFields = parsedOrders.filter(order => order.missingFields.length > 0).length;
+    const ordersWithMissingTripNumbers = parsedOrders.filter(order => !order.tripNumber || order.tripNumber.trim() === '').length;
+    
+    if (ordersWithMissingFields > 0 || ordersWithMissingTripNumbers > 0) {
+      // If there are incomplete orders, go to the incomplete tab
+      setActiveTab('incomplete');
       
-      // Count orders with missing fields and trip numbers
-      const ordersWithMissingFields = parsedOrders.filter(order => order.missingFields.length > 0).length;
-      const ordersWithMissingTripNumbers = parsedOrders.filter(order => !order.tripNumber || order.tripNumber.trim() === '').length;
+      toast({
+        title: "Upload successful with incomplete data",
+        description: `${parsedOrders.length} orders loaded. ${ordersWithMissingFields} with incomplete data. ${ordersWithMissingTripNumbers} missing trip numbers.`,
+        variant: "warning",
+      });
+    } else {
+      // If all data is complete, go to the orders tab
+      setActiveTab('orders');
       
       toast({
         title: "Upload successful",
-        description: `${parsedOrders.length} orders loaded successfully. ${
-          ordersWithMissingFields > 0 ? `${ordersWithMissingFields} with incomplete data.` : ''
-        } ${
-          ordersWithMissingTripNumbers > 0 ? `${ordersWithMissingTripNumbers} missing trip numbers.` : ''
-        }`,
+        description: `${parsedOrders.length} orders loaded successfully.`,
       });
     }
     
@@ -151,7 +177,8 @@ const Index = () => {
           <TabNavigation 
             activeTab={activeTab} 
             ordersCount={orders.length} 
-            issuesCount={issues.length} 
+            issuesCount={issues.length}
+            incompleteCount={incompleteOrdersCount}
             onTabChange={handleTabChange} 
           />
           
@@ -169,6 +196,14 @@ const Index = () => {
               onOrdersUpdated={handleOrdersUpdated} 
               onRemoveOrdersWithMissingTripNumbers={handleRemoveOrdersWithMissingTripNumbers} 
               onOpenDataVerification={openDataVerification} 
+            />
+          </TabsContent>
+          
+          <TabsContent value="incomplete">
+            <IncompleteDataTab
+              orders={orders}
+              onOrdersUpdated={handleOrdersUpdated}
+              onOpenDataVerification={openDataVerification}
             />
           </TabsContent>
           

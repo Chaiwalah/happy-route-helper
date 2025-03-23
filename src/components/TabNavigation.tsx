@@ -8,6 +8,7 @@ interface TabNavigationProps {
   activeTab: string;
   ordersCount: number;
   issuesCount: number;
+  incompleteCount: number;
   onTabChange: (value: string) => void;
 }
 
@@ -15,11 +16,12 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   activeTab,
   ordersCount,
   issuesCount,
+  incompleteCount,
   onTabChange
 }) => {
   return (
     <div className="backdrop-blur-sm sticky top-0 z-10 pb-4 pt-1 bg-background/95 supports-[backdrop-filter]:bg-background/60">
-      <TabsList className="grid w-full grid-cols-6 h-12">
+      <TabsList className="grid w-full grid-cols-7 h-12">
         <TabsTrigger 
           value="upload" 
           onClick={() => onTabChange('upload')}
@@ -34,6 +36,15 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           data-state={activeTab === 'orders' ? 'active' : ''}
         >
           2. Review Orders
+        </TabsTrigger>
+        <TabsTrigger 
+          value="incomplete" 
+          onClick={() => onTabChange('incomplete')}
+          disabled={ordersCount === 0}
+          data-state={activeTab === 'incomplete' ? 'active' : ''}
+          className={incompleteCount > 0 ? "text-amber-500 font-medium" : ""}
+        >
+          Incomplete Data {incompleteCount > 0 && `(${incompleteCount})`}
         </TabsTrigger>
         <TabsTrigger 
           value="map" 
