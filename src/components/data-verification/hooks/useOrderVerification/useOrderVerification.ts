@@ -40,6 +40,8 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     processingProgress: 0,
     ordersWithIssues: [],
     allOrdersValid: false,
+    suggestedTripNumbers: [],
+    suggestedDrivers: []
   });
   
   const { toast } = useToast();
@@ -214,8 +216,8 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
         processOrdersForVerification(updatedOrders);
       
       // Update the state with the new orders and validation results
-      setState({
-        ...state,
+      setState(prevState => ({
+        ...prevState,
         orders: updatedOrders,
         ordersWithIssues,
         suggestedTripNumbers,
@@ -225,7 +227,7 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
         validationMessage: null,
         isModified: false,
         isProcessing: false
-      });
+      }));
       
       // Call the callback with the updated orders
       onOrdersUpdated(updatedOrders);

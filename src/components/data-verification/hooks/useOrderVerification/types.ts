@@ -21,6 +21,8 @@ export interface OrderVerificationState {
   processingProgress: number;
   ordersWithIssues: string[];
   allOrdersValid: boolean;
+  suggestedTripNumbers: string[];
+  suggestedDrivers: string[];
 }
 
 export interface OrderValidationIssue {

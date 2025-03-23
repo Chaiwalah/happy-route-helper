@@ -39,6 +39,7 @@ export function DataVerification({
   })), [orders]);
 
   const {
+    orders: processedOrders,
     ordersWithIssues,
     selectedOrderId,
     setSelectedOrderId,
@@ -46,7 +47,7 @@ export function DataVerification({
     editingField,
     fieldValue,
     validationMessage,
-    isSavingField,
+    isProcessing: isSavingField,
     suggestedTripNumbers,
     suggestedDrivers,
     handleFieldEdit,
