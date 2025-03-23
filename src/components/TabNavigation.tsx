@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MapPin } from 'lucide-react';
 
 interface TabNavigationProps {
   activeTab: string;
@@ -51,7 +52,9 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           onClick={() => onTabChange('map')}
           disabled={ordersCount === 0}
           data-state={activeTab === 'map' ? 'active' : ''}
+          className="flex items-center gap-1"
         >
+          <MapPin className="h-4 w-4" />
           3. Map View
         </TabsTrigger>
         <TabsTrigger 
@@ -83,3 +86,4 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
     </div>
   );
 };
+

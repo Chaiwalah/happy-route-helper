@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -7,33 +6,83 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, AlertCircle, Info } from 'lucide-react';
+import { MapPin, AlertCircle, Info, Clock, Navigation } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
 import { debounce } from '@/lib/utils';
+import { geocodeAddress, calculateRouteDistance } from '@/utils/mapboxService';
+import { formatDate, formatTime } from '@/utils/dateFormatter';
 
 interface OrderMapProps {
   orders: DeliveryOrder[];
+  showRoutes?: boolean;
+  selectedDriver?: string | null;
+  selectedDate?: string | null;
 }
 
 interface MapLocation {
   id: string;
+  orderId: string;
   type: 'pickup' | 'dropoff';
   address: string;
   driver: string;
   latitude: number;
   longitude: number;
+  time?: string;
+  coordinates: [number, number]; // [longitude, latitude] for Mapbox
 }
 
-const OrderMap = ({ orders }: OrderMapProps) => {
+interface DriverRoute {
+  driver: string;
+  date: string;
+  color: string;
+  stops: MapLocation[];
+}
+
+// Create a fixed color mapping for drivers to ensure consistency
+const getDriverColor = (driver: string): string => {
+  // Hash the driver name to get a consistent number
+  let hash = 0;
+  for (let i = 0; i < driver.length; i++) {
+    hash = driver.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // List of distinct, visually pleasing colors
+  const colors = [
+    '#3498db', // blue
+    '#2ecc71', // green
+    '#e74c3c', // red
+    '#9b59b6', // purple
+    '#f1c40f', // yellow
+    '#1abc9c', // teal
+    '#d35400', // orange
+    '#34495e', // dark blue
+    '#16a085', // green blue
+    '#c0392b', // dark red
+    '#8e44ad', // dark purple
+    '#f39c12', // dark yellow
+    '#27ae60', // dark green
+    '#2980b9', // dark blue
+  ];
+  
+  // Use the hash to select a color
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+};
+
+const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedDate = null }: OrderMapProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const [mapboxToken, setMapboxToken] = useState<string>(localStorage.getItem('mapbox_token') || '');
+  const [mapboxToken, setMapboxToken] = useState<string>(
+    'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw'
+  );
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const mapLocations = useRef<MapLocation[]>([]);
   const [missingAddressCount, setMissingAddressCount] = useState(0);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const [driverRoutes, setDriverRoutes] = useState<DriverRoute[]>([]);
+  const routeSourcesRef = useRef<string[]>([]);
   
   // Process batches to avoid UI freezing
   const processBatch = async (
@@ -55,12 +104,15 @@ const OrderMap = ({ orders }: OrderMapProps) => {
               geocodeAddress(order.pickup).then(coords => {
                 if (coords) {
                   batchLocations.push({
-                    id: order.id || 'unknown',
+                    id: `pickup-${order.id || 'unknown'}`,
+                    orderId: order.id || 'unknown',
                     type: 'pickup',
                     address: order.pickup,
                     driver: order.driver || 'Unassigned',
-                    latitude: coords.latitude,
-                    longitude: coords.longitude
+                    latitude: coords[1],
+                    longitude: coords[0],
+                    time: order.actualPickupTime || order.scheduledPickupTime,
+                    coordinates: coords
                   });
                 }
               })
@@ -72,12 +124,15 @@ const OrderMap = ({ orders }: OrderMapProps) => {
               geocodeAddress(order.dropoff).then(coords => {
                 if (coords) {
                   batchLocations.push({
-                    id: order.id || 'unknown',
+                    id: `dropoff-${order.id || 'unknown'}`,
+                    orderId: order.id || 'unknown',
                     type: 'dropoff',
                     address: order.dropoff,
                     driver: order.driver || 'Unassigned',
-                    latitude: coords.latitude,
-                    longitude: coords.longitude
+                    latitude: coords[1],
+                    longitude: coords[0],
+                    time: order.actualDeliveryTime || order.scheduledDeliveryTime,
+                    coordinates: coords
                   });
                 }
               })
@@ -94,42 +149,6 @@ const OrderMap = ({ orders }: OrderMapProps) => {
     }
     
     onResult(batchLocations);
-  };
-
-  const geocodeAddress = async (address: string) => {
-    if (!address) return null;
-    
-    try {
-      // Simulate geocoding by extracting lat/lng from previous data
-      // This is a placeholder - in a real app, you'd use the Mapbox geocoding API
-      const cachedResponse = localStorage.getItem(`geocode_${address}`);
-      if (cachedResponse) {
-        return JSON.parse(cachedResponse);
-      }
-      
-      // Geocode the address using Mapbox Geocoding API
-      const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&limit=1`
-      );
-      
-      const data = await response.json();
-      
-      if (data.features && data.features.length > 0) {
-        const result = {
-          longitude: data.features[0].center[0],
-          latitude: data.features[0].center[1]
-        };
-        
-        // Cache the result
-        localStorage.setItem(`geocode_${address}`, JSON.stringify(result));
-        return result;
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error geocoding address:', address, error);
-      return null;
-    }
   };
 
   const initializeMap = useCallback(() => {
@@ -281,9 +300,24 @@ const OrderMap = ({ orders }: OrderMapProps) => {
             map.current.getCanvas().style.cursor = 'pointer';
             const feature = e.features[0];
             const coordinates = feature.geometry.coordinates.slice() as [number, number];
-            const description = `<strong>${feature.properties.driver}</strong><br>
-                                ${feature.properties.type === 'pickup' ? 'Pickup: ' : 'Dropoff: '}${feature.properties.address}<br>
-                                Order: ${feature.properties.id}`;
+            
+            // Format time if available
+            let timeText = '';
+            if (feature.properties.time) {
+              timeText = `<div class="flex items-center gap-1 text-gray-700"><span class="text-xs">⏱</span> ${feature.properties.time}</div>`;
+            } else {
+              timeText = `<div class="flex items-center gap-1 text-gray-500"><span class="text-xs">⏱</span> No time data</div>`;
+            }
+            
+            const description = `
+              <div class="p-1">
+                <div class="font-medium text-sm">${feature.properties.driver}</div>
+                <div class="text-xs text-gray-600">${feature.properties.type === 'pickup' ? 'Pickup' : 'Dropoff'}</div>
+                <div class="text-sm mt-1">${feature.properties.address}</div>
+                ${timeText}
+                <div class="text-xs text-gray-500 mt-1">Order ID: ${feature.properties.orderId}</div>
+              </div>
+            `;
             
             popupRef.current.setLngLat(coordinates).setHTML(description).addTo(map.current);
           });
@@ -342,6 +376,11 @@ const OrderMap = ({ orders }: OrderMapProps) => {
       (locations) => {
         mapLocations.current = locations;
         updateMapMarkers();
+        
+        if (showRoutes) {
+          createDriverRoutes(locations);
+        }
+        
         setIsLoading(false);
         
         if (missingCount > 0) {
@@ -361,6 +400,165 @@ const OrderMap = ({ orders }: OrderMapProps) => {
       }
     );
   };
+  
+  // Function to create and display driver routes
+  const createDriverRoutes = (locations: MapLocation[]) => {
+    if (!map.current || locations.length === 0) return;
+    
+    // Group locations by driver and date
+    const locationsByDriverAndDate = new Map<string, MapLocation[]>();
+    
+    locations.forEach(location => {
+      // Skip locations without a driver
+      if (!location.driver || location.driver === 'Unassigned') return;
+      
+      // Get date from the order
+      const orderWithDate = orders.find(order => order.id === location.orderId);
+      if (!orderWithDate || !orderWithDate.date) return;
+      
+      // Use just the date part
+      const date = orderWithDate.date.split('T')[0];
+      
+      // Skip if filtered by date and doesn't match
+      if (selectedDate && date !== selectedDate) return;
+      
+      // Skip if filtered by driver and doesn't match
+      if (selectedDriver && location.driver !== selectedDriver) return;
+      
+      const key = `${location.driver}_${date}`;
+      
+      if (!locationsByDriverAndDate.has(key)) {
+        locationsByDriverAndDate.set(key, []);
+      }
+      
+      locationsByDriverAndDate.get(key)?.push(location);
+    });
+    
+    // Sort locations by time (if available)
+    for (const [key, locs] of locationsByDriverAndDate.entries()) {
+      // Sort first by type (pickup before dropoff), then by time if available
+      locationsByDriverAndDate.set(key, locs.sort((a, b) => {
+        // Put pickups first
+        if (a.type === 'pickup' && b.type === 'dropoff') return -1;
+        if (a.type === 'dropoff' && b.type === 'pickup') return 1;
+        
+        // Then sort by time if available
+        if (a.time && b.time) {
+          return new Date(a.time).getTime() - new Date(b.time).getTime();
+        }
+        
+        // If no time, keep original order
+        return 0;
+      }));
+    }
+    
+    // Create driver routes
+    const routes: DriverRoute[] = [];
+    
+    for (const [key, locs] of locationsByDriverAndDate.entries()) {
+      const [driver, date] = key.split('_');
+      
+      // Get a consistent color for this driver
+      const color = getDriverColor(driver);
+      
+      routes.push({
+        driver,
+        date,
+        color,
+        stops: locs
+      });
+    }
+    
+    setDriverRoutes(routes);
+    
+    // Clear previous route layers
+    clearRouteLayers();
+    
+    // Draw each route
+    routes.forEach((route, index) => {
+      if (route.stops.length < 2) return; // Need at least 2 points for a route
+      
+      const coordinatesList = route.stops.map(stop => stop.coordinates);
+      drawRoute(route.driver, route.date, coordinatesList, route.color, index);
+    });
+  };
+  
+  // Function to clear existing route layers
+  const clearRouteLayers = () => {
+    if (!map.current) return;
+    
+    // Remove existing route sources and layers
+    routeSourcesRef.current.forEach(sourceId => {
+      if (map.current?.getLayer(`${sourceId}-line`)) {
+        map.current.removeLayer(`${sourceId}-line`);
+      }
+      
+      if (map.current?.getSource(sourceId)) {
+        map.current.removeSource(sourceId);
+      }
+    });
+    
+    routeSourcesRef.current = [];
+  };
+  
+  // Draw a route on the map
+  const drawRoute = async (driver: string, date: string, coordinates: [number, number][], color: string, index: number) => {
+    if (!map.current) return;
+    
+    try {
+      // Get route from Mapbox Directions API
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates.map(coord => coord.join(',')).join(';')}?geometries=geojson&overview=full&access_token=${mapboxToken}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get directions: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.routes || data.routes.length === 0) {
+        console.warn('No route found between coordinates');
+        return;
+      }
+      
+      const route = data.routes[0];
+      const sourceId = `route-${driver}-${date}-${index}`;
+      
+      // Add route to map
+      map.current.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {
+            driver,
+            date
+          },
+          geometry: route.geometry
+        }
+      });
+      
+      map.current.addLayer({
+        id: `${sourceId}-line`,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': color,
+          'line-width': 4,
+          'line-opacity': 0.8
+        }
+      });
+      
+      // Track the source ID for later cleanup
+      routeSourcesRef.current.push(sourceId);
+    } catch (error) {
+      console.error('Error drawing route:', error);
+    }
+  };
 
   const updateMapMarkers = useCallback(() => {
     if (!map.current) return;
@@ -372,9 +570,11 @@ const OrderMap = ({ orders }: OrderMapProps) => {
         type: 'Feature',
         properties: {
           id: location.id,
+          orderId: location.orderId,
           type: location.type,
           address: location.address,
-          driver: location.driver
+          driver: location.driver,
+          time: location.time
         },
         geometry: {
           type: 'Point',
@@ -437,7 +637,7 @@ const OrderMap = ({ orders }: OrderMapProps) => {
   }, [mapboxToken, initializeMap, isMapInitialized]);
 
   // Memoize the geocoding function to prevent unnecessary recalculation
-  const memoizedGeocodeAddresses = useCallback(geocodeAddresses, [orders, map.current]);
+  const memoizedGeocodeAddresses = useCallback(geocodeAddresses, [orders, map.current, showRoutes, selectedDriver, selectedDate]);
 
   // Update markers when orders change and map is initialized
   useEffect(() => {
@@ -542,6 +742,20 @@ const OrderMap = ({ orders }: OrderMapProps) => {
                 <span className="text-xs">Dropoff</span>
               </div>
             </div>
+            {showRoutes && driverRoutes.length > 0 && (
+              <>
+                <Separator className="my-2" />
+                <div className="text-xs font-medium mb-1">Driver Routes</div>
+                <div className="grid grid-cols-1 gap-1 max-h-20 overflow-y-auto">
+                  {driverRoutes.map((route, index) => (
+                    <div key={`${route.driver}-${route.date}-${index}`} className="flex items-center">
+                      <div className="w-3 h-1 mr-2" style={{ backgroundColor: route.color }}></div>
+                      <span className="text-xs truncate">{route.driver}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
