@@ -261,7 +261,7 @@ export function OrderDetails({
           </Tooltip>
         </TooltipProvider>
         
-        {/* Driver field */}
+        {/* Driver field - Now correctly marked as warning only when unassigned */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -280,7 +280,7 @@ export function OrderDetails({
                   validationStatus={getFieldValidationStatus('driver', 
                     editingField === 'driver' ? fieldValue : selectedOrder.driver)}
                   validationMessage={isDriverUnassigned ? 
-                    "Driver should not be 'Unassigned'" : 
+                    "Driver is set to 'Unassigned'" : 
                     "Driver names should be consistent"}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
@@ -290,7 +290,7 @@ export function OrderDetails({
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-xs">
               <p>Driver names should be consistent across orders to properly attribute deliveries. 
-              Ensure names follow the same format (e.g., "John Smith" vs "Smith, John").</p>
+              While 'Unassigned' is acceptable, consider assigning specific drivers for better route planning.</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

@@ -457,26 +457,26 @@ export const validateField = (
   
   // Driver specific validation
   if (fieldName === 'driver') {
-    // Check for explicitly "Unassigned" driver
+    // Check for explicitly "Unassigned" driver - NOW RETURNS TRUE WITH WARNING
     if (isUnassignedDriver(value)) {
-      setValidationMessage('Driver is set to "Unassigned" - please assign a driver');
+      setValidationMessage('Driver is set to "Unassigned" - consider assigning a specific driver');
       
       logDriverProcessing(
         orderId,
         'Validation',
         value,
         normalizedValue,
-        { valid: false, reason: 'Explicitly unassigned', status: 'NEEDS_ASSIGNMENT' }
+        { valid: true, reason: 'Explicitly unassigned but allowed', status: 'WARNING' }
       );
       
       endPerformanceTracking(operationId, { 
-        valid: false, 
-        reason: 'unassigned driver',
+        valid: true, // Changed from false to true
+        reason: 'unassigned driver but allowed',
         normalizedValue,
-        status: 'NEEDS_ASSIGNMENT'
+        status: 'WARNING'
       });
       
-      return false;
+      return true; // Changed from false to true
     }
     
     // Check for driver that needs verification (N/A, None, etc.)

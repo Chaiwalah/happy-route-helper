@@ -29,7 +29,7 @@ export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warni
     return 'error';
   }
   
-  // Check for driver issues - now properly distinguishes missing vs unassigned
+  // Check for driver issues - properly distinguishes missing vs unassigned
   if (order.driver === null) {
     return 'warning'; // Missing driver
   }
@@ -64,7 +64,7 @@ export const getFieldValidationStatus = (fieldName: string, value: string | null
   // Handle null values specifically - these are truly missing
   if (value === null) {
     if (fieldName === 'tripNumber') return 'error';
-    if (fieldName === 'driver') return 'error';
+    if (fieldName === 'driver') return 'warning'; // Changed from 'error' to 'warning'
     if (fieldName === 'pickup' || fieldName === 'dropoff') return 'error';
     return 'warning';
   }
@@ -114,9 +114,9 @@ export const getFieldValidationStatus = (fieldName: string, value: string | null
     }
   }
   
-  // Driver should not be "Unassigned"
+  // Driver should be "warning" when "Unassigned" (changed from error to warning)
   if (fieldName === 'driver' && isUnassignedDriver(processedValue)) {
-    return 'warning'; // Changed from error to warning
+    return 'warning'; // Changed from 'error' to 'warning'
   }
   
   return 'valid';
