@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { 
   OrderVerificationState, 
@@ -15,6 +15,7 @@ import {
 } from './statusUtils';
 import { validateField } from './validationUtils';
 import { useToast } from '@/components/ui/use-toast';
+import { processOrdersForVerification } from './orderProcessing';
 import {
   startPerformanceTracking,
   endPerformanceTracking,
@@ -43,6 +44,21 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
   
   const { toast } = useToast();
   
+  // Process orders on initial load to identify issues
+  useEffect(() => {
+    console.log("Processing initial orders:", initialOrders.length);
+    const { ordersWithIssues, suggestedTripNumbers, suggestedDrivers } = processOrdersForVerification(initialOrders);
+    
+    console.log("Orders with issues after processing:", ordersWithIssues.length);
+    
+    setState(prev => ({
+      ...prev,
+      ordersWithIssues,
+      suggestedTripNumbers,
+      suggestedDrivers
+    }));
+  }, [initialOrders]);
+  
   // Memoize order validation statuses for performance
   const orderValidationStatuses = useMemo(() => {
     startPerformanceTracking('useOrderVerification.orderValidationStatuses');
@@ -56,23 +72,13 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     return statuses;
   }, [state.orders]);
   
-  // Memoize the list of orders with issues
-  const ordersWithIssues = useMemo(() => {
-    startPerformanceTracking('useOrderVerification.ordersWithIssues');
-    const issues = state.orders.filter(order => orderValidationStatuses[order.id] !== 'valid').map(order => order.id);
-    endPerformanceTracking('useOrderVerification.ordersWithIssues', {
-      issueCount: issues.length
-    });
-    return issues;
-  }, [state.orders, orderValidationStatuses]);
-  
   // Memoize the allOrdersValid flag
   const allOrdersValid = useMemo(() => {
     startPerformanceTracking('useOrderVerification.allOrdersValid');
-    const isValid = state.orders.every(order => orderValidationStatuses[order.id] === 'valid');
+    const isValid = state.ordersWithIssues.length === 0;
     endPerformanceTracking('useOrderVerification.allOrdersValid', { isValid });
     return isValid;
-  }, [state.orders, orderValidationStatuses]);
+  }, [state.ordersWithIssues]);
   
   // Find the selected order object for use in UI
   const selectedOrder = useMemo(() => {
@@ -107,7 +113,7 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     startPerformanceTracking('useOrderVerification.startEdit', { field });
     setState(prevState => {
       const selectedOrder = prevState.orders.find(order => order.id === prevState.selectedOrderId);
-      const fieldValue = selectedOrder ? String(selectedOrder[field]) : '';
+      const fieldValue = selectedOrder ? String(selectedOrder[field] || '') : '';
       
       return {
         ...prevState,
@@ -180,37 +186,70 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
       return;
     }
     
-    // Proceed with saving if the field is valid
-    setState(prevState => {
-      const updatedOrders = prevState.orders.map(order => {
-        if (order.id === prevState.selectedOrderId) {
-          return {
+    // Set processing state while we update
+    setState(prev => ({
+      ...prev,
+      isProcessing: true
+    }));
+    
+    try {
+      // Update the order with the new field value
+      const updatedOrders = state.orders.map(order => {
+        if (order.id === state.selectedOrderId) {
+          const updatedOrder = {
             ...order,
-            [prevState.editingField]: prevState.fieldValue
+            [state.editingField]: state.fieldValue,
+            // Remove this field from missingFields if it was present
+            missingFields: order.missingFields
+              ? order.missingFields.filter(field => field !== state.editingField)
+              : []
           };
+          return updatedOrder;
         }
         return order;
       });
       
-      // Update the state with the new orders and reset editing state
-      return {
-        ...prevState,
+      // Reprocess all orders to update validation status
+      const { ordersWithIssues, suggestedTripNumbers, suggestedDrivers } = 
+        processOrdersForVerification(updatedOrders);
+      
+      // Update the state with the new orders and validation results
+      setState({
+        ...state,
         orders: updatedOrders,
+        ordersWithIssues,
+        suggestedTripNumbers,
+        suggestedDrivers,
         editingField: 'NONE',
         fieldValue: '',
         validationMessage: null,
-        isModified: false
-      };
-    });
+        isModified: false,
+        isProcessing: false
+      });
+      
+      // Call the callback with the updated orders
+      onOrdersUpdated(updatedOrders);
+      
+      toast({
+        title: "Field updated",
+        description: `Successfully updated ${state.editingField} for order ${state.selectedOrderId}`,
+      });
+    } catch (error) {
+      console.error("Error updating field:", error);
+      toast({
+        title: "Update failed",
+        description: "An error occurred while updating the field",
+        variant: "destructive"
+      });
+      
+      setState(prev => ({
+        ...prev,
+        isProcessing: false
+      }));
+    }
     
-    // After state is updated, call the onOrdersUpdated callback
-    onOrdersUpdated(state.orders);
-    toast({
-      title: "Field updated",
-      description: `Successfully updated ${state.editingField} for order ${state.selectedOrderId}`,
-    });
     endPerformanceTracking('useOrderVerification.saveFieldValue', { success: true });
-  }, [state.selectedOrderId, state.editingField, state.fieldValue, state.orders, onOrdersUpdated, toast]);
+  }, [state, onOrdersUpdated, toast]);
   
   // Function to get validation status for a field
   const getFieldValidationStatus = useCallback((fieldName: string, value: string | null): FieldValidationStatus => {
@@ -241,10 +280,6 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     });
   }, [state.orders, onOrdersUpdated, toast]);
   
-  // Mock suggestedTripNumbers and suggestedDrivers for now
-  const suggestedTripNumbers = useMemo(() => ['TR-001', 'TR-002', 'TR-003'], []);
-  const suggestedDrivers = useMemo(() => ['John Doe', 'Jane Smith', 'Alex Johnson'], []);
-  
   // Add isSavingField as a derived state
   const isSavingField = state.isProcessing;
   
@@ -265,17 +300,13 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     updateFieldValue,
     cancelEdit,
     saveFieldValue,
-    ordersWithIssues,
     allOrdersValid,
     dependencies,
-    // Add the missing properties that DataVerification expects
     handleFieldEdit,
     handleFieldValueChange,
     handleFieldUpdate,
     handleOrdersApprove,
     getFieldValidationStatus,
-    isSavingField,
-    suggestedTripNumbers,
-    suggestedDrivers
+    isSavingField
   };
 };

@@ -23,7 +23,7 @@ import {
 export const processOrdersForVerification = (
   orders: DeliveryOrder[]
 ): {
-  ordersWithIssues: DeliveryOrder[];
+  ordersWithIssues: string[];  // Changed to string[] to match how it's used
   suggestedTripNumbers: string[];
   suggestedDrivers: string[];
 } => {
@@ -53,7 +53,7 @@ export const processOrdersForVerification = (
   
   // PERFORMANCE OPTIMIZATION: Process in chunks
   const CHUNK_SIZE = 200; // Process 200 orders at a time
-  const ordersWithIssues: DeliveryOrder[] = [];
+  const ordersWithIssuesIds: string[] = []; // Changed to store IDs only
   const allTripNumbers: string[] = [];
   const allDrivers: string[] = [];
   
@@ -62,13 +62,20 @@ export const processOrdersForVerification = (
     const chunk = processedOrders.slice(i, i + CHUNK_SIZE);
     const chunkStartTime = performance.now();
     
-    const chunkOrdersWithIssues = chunk.filter(order => {
+    // Process each order in the chunk
+    chunk.forEach(order => {
       startPerformanceTracking(`processOrdersForVerification.processOrder.${order.id}`);
       
       // Ensure missingFields exists and is an array
       if (!order.missingFields) {
         order.missingFields = [];
       }
+      
+      // Clear existing missing fields for tripNumber and driver
+      // This is crucial - we'll rebuild them from scratch
+      order.missingFields = order.missingFields.filter(
+        field => field !== 'tripNumber' && field !== 'driver'
+      );
       
       // Process and validate trip number
       const tripNumberStartTime = performance.now();
@@ -107,23 +114,19 @@ export const processOrdersForVerification = (
         }
       });
       
-      // Return true if order has issues with trip number or driver
+      // Check if order has issues with trip number or driver and add its ID to the array
       const hasIssues = order.missingFields.includes('tripNumber') || order.missingFields.includes('driver');
       
       if (hasIssues) {
+        ordersWithIssuesIds.push(order.id);
         logDebug(`Order ${order.id} has validation issues: ${order.missingFields.join(', ')}`);
       }
-      
-      return hasIssues;
     });
-    
-    // Add chunk results to overall results
-    ordersWithIssues.push(...chunkOrdersWithIssues);
     
     const chunkEndTime = performance.now();
     logPerformance(`Processed chunk ${Math.floor(i/CHUNK_SIZE) + 1}/${Math.ceil(processedOrders.length/CHUNK_SIZE)}`, {
       chunkSize: chunk.length,
-      issuesFound: chunkOrdersWithIssues.length,
+      issuesFound: chunk.filter(o => o.missingFields.includes('tripNumber') || o.missingFields.includes('driver')).length,
       processingTimeMs: (chunkEndTime - chunkStartTime).toFixed(2)
     });
   }
@@ -136,9 +139,9 @@ export const processOrdersForVerification = (
   
   logPerformance(`Order verification processing complete`, {
     totalOrders: processedOrders.length,
-    ordersWithIssues: ordersWithIssues.length,
-    tripNumberIssues: ordersWithIssues.filter(o => o.missingFields.includes('tripNumber')).length,
-    driverIssues: ordersWithIssues.filter(o => o.missingFields.includes('driver')).length,
+    ordersWithIssues: ordersWithIssuesIds.length,
+    tripNumberIssues: processedOrders.filter(o => o.missingFields.includes('tripNumber')).length,
+    driverIssues: processedOrders.filter(o => o.missingFields.includes('driver')).length,
     processingTimeMs: (processEndTime - processStartTime).toFixed(2),
     tripNumberProcessingTimeMs: tripNumberProcessingTime.toFixed(2),
     driverProcessingTimeMs: driverProcessingTime.toFixed(2)
@@ -146,15 +149,25 @@ export const processOrdersForVerification = (
   
   endPerformanceTracking('processOrdersForVerification', {
     totalOrders: processedOrders.length,
-    ordersWithIssues: ordersWithIssues.length,
+    ordersWithIssues: ordersWithIssuesIds.length,
     suggestionCount: {
       tripNumbers: suggestedTripNumbers.length,
       drivers: suggestedDrivers.length
     }
   });
   
+  console.log("Final orders with issues:", ordersWithIssuesIds);
+  console.log("First few orders after validation:", 
+    processedOrders.slice(0, 5).map(o => ({
+      id: o.id, 
+      tripNumber: o.tripNumber, 
+      driver: o.driver, 
+      missingFields: o.missingFields
+    }))
+  );
+  
   return {
-    ordersWithIssues,
+    ordersWithIssues: ordersWithIssuesIds,
     suggestedTripNumbers,
     suggestedDrivers
   };
@@ -162,6 +175,7 @@ export const processOrdersForVerification = (
 
 /**
  * Process and normalize trip number for an order with enhanced verification status
+ * FIXED to correctly identify missing vs valid trip numbers
  */
 function processTripNumber(order: DeliveryOrder): void {
   startPerformanceTracking(`processTripNumber.${order.id}`);
@@ -169,32 +183,37 @@ function processTripNumber(order: DeliveryOrder): void {
   // Capture the raw trip number for reference
   const rawTripNumber = order.tripNumber;
   
-  // If trip number is null, it's truly missing
-  if (rawTripNumber === null) {
-    // Already null, leave it as null to indicate it's missing
+  // IMPORTANT FIX: Skip adding to missingFields for empty values if they're falsy but not explicitly null
+  // This allows "" and undefined to be treated properly (missing)
+  if (rawTripNumber === null || rawTripNumber === undefined || rawTripNumber === "") {
     // Add to missing fields if not already there
     if (!order.missingFields.includes('tripNumber')) {
       order.missingFields.push('tripNumber');
     }
     
+    // If trip number is null or undefined, set to empty string for UI display
+    if (order.tripNumber === null || order.tripNumber === undefined) {
+      order.tripNumber = '';
+    }
+    
     logTripNumberProcessing(
       order.id,
       'Process-TripNumber',
-      null,
-      null,
-      { decision: 'missing', reason: 'null value', status: 'MISSING' }
+      rawTripNumber,
+      '',
+      { decision: 'missing', reason: 'null/empty value', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processTripNumber.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'null value',
+      reason: 'null/empty value',
       status: 'MISSING'
     });
     
     return;
   }
   
-  // For non-null values, normalize them
+  // For non-empty values, normalize them
   const normalizedTripNumber = normalizeFieldValue(rawTripNumber);
   
   // Empty trip number after normalization
@@ -211,12 +230,12 @@ function processTripNumber(order: DeliveryOrder): void {
       'Process-TripNumber',
       rawTripNumber,
       '',
-      { decision: 'missing-empty', reason: 'empty value', status: 'MISSING' }
+      { decision: 'missing-empty', reason: 'empty after normalization', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processTripNumber.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'empty value',
+      reason: 'empty after normalization',
       status: 'MISSING'
     });
     
@@ -278,6 +297,7 @@ function processTripNumber(order: DeliveryOrder): void {
   }
   else {
     // Trip number exists and is valid - remove from missing fields if present
+    // This is actually a redundant check since we cleared missingFields at the beginning
     if (order.missingFields.includes('tripNumber')) {
       order.missingFields = order.missingFields.filter(field => field !== 'tripNumber');
     }
@@ -303,7 +323,7 @@ function processTripNumber(order: DeliveryOrder): void {
 
 /**
  * Process and normalize driver for an order with enhanced verification status
- * Now properly handles placeholder values that need verification
+ * FIXED to correctly identify missing vs valid drivers
  */
 function processDriver(order: DeliveryOrder): void {
   startPerformanceTracking(`processDriver.${order.id}`);
@@ -311,26 +331,29 @@ function processDriver(order: DeliveryOrder): void {
   // Capture the raw driver for reference
   const rawDriver = order.driver;
   
-  // If driver is null, it's truly missing (not the same as "Unassigned")
-  if (rawDriver === null) {
-    // Leave it as null to indicate it's missing
-    
+  // Check for null or undefined values
+  if (rawDriver === null || rawDriver === undefined || rawDriver === "") {
     // Add to missing fields if not already there
     if (!order.missingFields.includes('driver')) {
       order.missingFields.push('driver');
     }
     
+    // If driver is null or undefined, set to empty string for UI display
+    if (order.driver === null || order.driver === undefined) {
+      order.driver = '';
+    }
+    
     logDriverProcessing(
       order.id,
       'Process-Driver',
+      rawDriver,
       null,
-      null,
-      { decision: 'missing', reason: 'null value', status: 'MISSING' }
+      { decision: 'missing', reason: 'null/empty value', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processDriver.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'null value',
+      reason: 'null/empty value',
       status: 'MISSING'
     });
     
@@ -354,12 +377,12 @@ function processDriver(order: DeliveryOrder): void {
       'Process-Driver',
       rawDriver,
       '',
-      { decision: 'missing-empty', reason: 'empty value', status: 'MISSING' }
+      { decision: 'missing-empty', reason: 'empty after normalization', status: 'MISSING' }
     );
     
     endPerformanceTracking(`processDriver.${order.id}`, { 
       result: 'missing-field', 
-      reason: 'empty value',
+      reason: 'empty after normalization',
       status: 'MISSING'
     });
     
@@ -426,6 +449,7 @@ function processDriver(order: DeliveryOrder): void {
   order.driver = normalizedDriver;
   
   // Remove from missing fields if present (it's valid)
+  // This is actually a redundant check since we cleared missingFields at the beginning
   if (order.missingFields.includes('driver')) {
     order.missingFields = order.missingFields.filter(field => field !== 'driver');
   }

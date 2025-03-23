@@ -1,7 +1,7 @@
 
 "use client"
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { OrderDetails } from './OrderDetails';
 import { VerificationSidebar } from './VerificationSidebar';
@@ -24,7 +24,7 @@ export function DataVerification({
   onOpenChange
 }: DataVerificationProps) {
   // Initialize the orders before passing to useOrderVerification
-  const initializedOrders = orders.map(order => ({
+  const initializedOrders = React.useMemo(() => orders.map(order => ({
     ...order,
     // Make sure tripNumber is not undefined or null
     tripNumber: order.tripNumber !== undefined && order.tripNumber !== null 
@@ -36,7 +36,7 @@ export function DataVerification({
       : 'Unassigned',
     // Ensure missingFields exists
     missingFields: order.missingFields || []
-  }));
+  })), [orders]);
 
   const {
     ordersWithIssues,
@@ -61,12 +61,25 @@ export function DataVerification({
 
   // Convert ordersWithIssues (string[]) to an array of DeliveryOrder objects
   const ordersWithIssuesObjects = React.useMemo(() => {
-    return initializedOrders.filter(order => ordersWithIssues.includes(order.id));
+    const result = initializedOrders.filter(order => ordersWithIssues.includes(order.id));
+    console.log('Orders with issues objects:', result.length);
+    return result;
   }, [initializedOrders, ordersWithIssues]);
+
+  // Auto-select the first order with issues if none is selected
+  useEffect(() => {
+    if (ordersWithIssuesObjects.length > 0 && !selectedOrderId) {
+      setSelectedOrderId(ordersWithIssuesObjects[0].id);
+    }
+  }, [ordersWithIssuesObjects, selectedOrderId, setSelectedOrderId]);
 
   // Add some console logging to check what's happening
   console.log('[DataVerification] Orders with issues:', ordersWithIssues);
+  console.log('[DataVerification] Orders with issues count:', ordersWithIssuesObjects.length);
   console.log('[DataVerification] Selected order:', selectedOrder);
+  console.log('[DataVerification] All orders:', initializedOrders);
+  console.log('[DataVerification] First few orders tripNumber values:', 
+    initializedOrders.slice(0, 5).map(o => ({ id: o.id, tripNumber: o.tripNumber, driver: o.driver })));
 
   // If Dialog props are provided, render in a Dialog
   if (open !== undefined && onOpenChange !== undefined) {
@@ -105,6 +118,16 @@ export function DataVerification({
                   suggestedDrivers={suggestedDrivers}
                   getFieldValidationStatus={getFieldValidationStatus}
                 />
+              )}
+              {!selectedOrder && ordersWithIssuesObjects.length > 0 && (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-lg text-gray-500">Select an order from the list to view details</p>
+                </div>
+              )}
+              {!selectedOrder && ordersWithIssuesObjects.length === 0 && (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-lg text-green-500">All orders have been verified!</p>
+                </div>
               )}
             </div>
           </div>
@@ -149,6 +172,16 @@ export function DataVerification({
             suggestedDrivers={suggestedDrivers}
             getFieldValidationStatus={getFieldValidationStatus}
           />
+        )}
+        {!selectedOrder && ordersWithIssuesObjects.length > 0 && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-lg text-gray-500">Select an order from the list to view details</p>
+          </div>
+        )}
+        {!selectedOrder && ordersWithIssuesObjects.length === 0 && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-lg text-green-500">All orders have been verified!</p>
+          </div>
         )}
       </div>
       <div className="p-4 border-t flex justify-end">
