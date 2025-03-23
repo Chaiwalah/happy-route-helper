@@ -1,7 +1,7 @@
 
 /**
  * Performance and Debug Logger
- * Tracks CSV parsing, data validation, and UI rendering performance
+ * Optimized for minimal performance impact
  */
 
 type LogLevel = 'debug' | 'info' | 'warning' | 'error' | 'performance';
@@ -21,6 +21,9 @@ class PerformanceLogger {
   private logPrefix: string = '🔍 [DeliveryTracker]';
   private operations: Map<string, number> = new Map();
   private addressCache: Map<string, [number, number]> = new Map(); // Cache for geocoded addresses
+  private inBatchOperation: boolean = false;
+  private batchedLogs: string[] = [];
+  private maxEntries: number = 500; // Limit stored entries for memory management
 
   private constructor() {}
 
@@ -39,19 +42,38 @@ class PerformanceLogger {
     this.enabled = false;
   }
 
+  public startBatchOperation(): void {
+    this.inBatchOperation = true;
+    this.batchedLogs = [];
+  }
+
+  public endBatchOperation(): void {
+    this.inBatchOperation = false;
+    // Log all batched logs at once for better performance
+    if (this.batchedLogs.length > 0) {
+      console.log(this.batchedLogs.join('\n'));
+      this.batchedLogs = [];
+    }
+  }
+
   public startOperation(operation: string, metadata?: Record<string, any>): void {
     if (!this.enabled) return;
     
     const startTime = performance.now();
     this.operations.set(operation, startTime);
     
+    // Manage entry count to prevent memory leaks
+    if (this.performanceEntries.length >= this.maxEntries) {
+      this.performanceEntries = this.performanceEntries.slice(-Math.floor(this.maxEntries / 2));
+    }
+
     this.performanceEntries.push({
       operation,
       startTime,
       metadata
     });
     
-    console.log(`${this.logPrefix} ⏱️ Starting: ${operation}`, metadata || '');
+    this.logMessage(`⏱️ Starting: ${operation}`, metadata || '');
   }
 
   public endOperation(operation: string, additionalMetadata?: Record<string, any>): number {
@@ -61,14 +83,14 @@ class PerformanceLogger {
     const startTime = this.operations.get(operation);
     
     if (startTime === undefined) {
-      console.warn(`${this.logPrefix} ⚠️ Tried to end operation "${operation}" which was never started`);
+      this.logMessage(`⚠️ Tried to end operation "${operation}" which was never started`, null, 'warning');
       return 0;
     }
     
     const duration = endTime - startTime;
     this.operations.delete(operation);
     
-    // Find the entry and update it
+    // Find the entry and update it (only if we're storing it)
     const entry = this.performanceEntries.find(e => 
       e.operation === operation && e.endTime === undefined
     );
@@ -81,10 +103,26 @@ class PerformanceLogger {
       }
     }
     
-    console.log(`${this.logPrefix} ⏱️ Completed: ${operation} in ${duration.toFixed(2)}ms`, 
-      additionalMetadata || '');
+    this.logMessage(`⏱️ Completed: ${operation} in ${duration.toFixed(2)}ms`, additionalMetadata || '');
     
     return duration;
+  }
+
+  private logMessage(message: string, data: any, level: LogLevel = 'debug'): void {
+    if (!this.enabled) return;
+    
+    const logString = `${this.logPrefix} ${message}`;
+    
+    if (this.inBatchOperation) {
+      this.batchedLogs.push(data ? `${logString} ${JSON.stringify(data)}` : logString);
+      return;
+    }
+    
+    if (data) {
+      console.log(logString, data);
+    } else {
+      console.log(logString);
+    }
   }
 
   public log(level: LogLevel, message: string, data?: any): void {
@@ -92,6 +130,11 @@ class PerformanceLogger {
     
     const timestamp = new Date().toISOString();
     const prefix = `${this.logPrefix} [${timestamp}] [${level.toUpperCase()}]`;
+    
+    // Skip non-critical logs when in batch operation for performance
+    if (this.inBatchOperation && (level === 'debug' || level === 'info')) {
+      return;
+    }
     
     switch (level) {
       case 'debug':
@@ -112,44 +155,43 @@ class PerformanceLogger {
     }
   }
 
+  // Optimized specialized logging methods
   public logTripNumberProcessing(orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.inBatchOperation) return;
     
     this.log('debug', `Trip Number Processing [${stage}] for ${orderId}`, {
       rawValue,
       processedValue,
-      decisions,
-      timestamp: new Date().toISOString()
+      decisions
     });
   }
 
   public logDriverProcessing(orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.inBatchOperation) return;
     
     this.log('debug', `Driver Processing [${stage}] for ${orderId}`, {
       rawValue,
       processedValue,
-      decisions,
-      timestamp: new Date().toISOString()
+      decisions
     });
   }
 
-  // New method for address caching
+  // Optimized address caching methods
   public cacheAddress(address: string, coordinates: [number, number]): void {
     this.addressCache.set(address, coordinates);
-    this.log('debug', `Address cached`, { address, coordinates });
+    if (!this.inBatchOperation) {
+      this.log('debug', `Address cached`, { address, coordinates });
+    }
   }
 
-  // New method to retrieve cached address
   public getCachedAddress(address: string): [number, number] | undefined {
     const result = this.addressCache.get(address);
-    if (result) {
+    if (result && !this.inBatchOperation) {
       this.log('debug', `Cache hit for address`, { address });
     }
     return result;
   }
 
-  // New method to clear address cache
   public clearAddressCache(): void {
     const cacheSize = this.addressCache.size;
     this.addressCache.clear();
@@ -219,7 +261,7 @@ export const getBottlenecks = (threshold?: number) =>
 export const clearPerformanceLogs = () => 
   performanceLogger.clearLogs();
 
-// New address caching helpers
+// Address caching helpers
 export const cacheAddress = (address: string, coordinates: [number, number]) => 
   performanceLogger.cacheAddress(address, coordinates);
 
@@ -228,3 +270,10 @@ export const getCachedAddress = (address: string) =>
 
 export const clearAddressCache = () => 
   performanceLogger.clearAddressCache();
+
+// New batch operation helpers
+export const startBatchLogging = () => 
+  performanceLogger.startBatchOperation();
+
+export const endBatchLogging = () => 
+  performanceLogger.endBatchOperation();

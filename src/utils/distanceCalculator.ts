@@ -10,14 +10,19 @@ import {
   logError,
   logPerformance,
   cacheAddress,
-  getCachedAddress
+  getCachedAddress,
+  startBatchLogging,
+  endBatchLogging
 } from './performanceLogger';
 
-// Maximum time to wait for a distance calculation (in milliseconds)
-const CALCULATION_TIMEOUT = 10000; // 10 seconds
-const MAX_RETRIES = 2; // Maximum number of retries for failed calculations
-const CONCURRENT_BATCHES = 3; // Number of batches to process in parallel
-const BATCH_SIZE = 5; // Size of each batch
+// Type definition for coordinates
+export type Coordinates = [number, number]; // [longitude, latitude]
+
+// Configuration
+const CALCULATION_TIMEOUT = 8000; // 8 seconds (reduced from 10)
+const MAX_RETRIES = 1; // Reduced from 2 for faster processing
+const CONCURRENT_BATCHES = 5; // Increased from 3 
+const BATCH_SIZE = 8; // Increased from 5
 
 /**
  * Calculate distances for multiple orders with improved performance
@@ -27,6 +32,7 @@ export const calculateDistances = async (
 ): Promise<DeliveryOrder[]> => {
   startPerformanceTracking('calculateDistances', { orderCount: orders.length });
   logInfo(`Starting distance calculations for ${orders.length} orders`);
+  startBatchLogging(); // Start batch operations to reduce console output
   
   // Create a copy of the orders to avoid mutation
   const updatedOrders = [...orders];
@@ -51,20 +57,14 @@ export const calculateDistances = async (
       await Promise.all(
         currentBatches.map(async (batch, batchIndex) => {
           const batchNumber = i + batchIndex + 1;
-          startPerformanceTracking(`calculateDistances.processBatch.${batchNumber}`, { 
-            batchSize: batch.length,
-            batchNumber 
-          });
+          startPerformanceTracking(`calculateDistances.processBatch.${batchNumber}`);
           
           // Process all orders in this batch concurrently
           await Promise.all(
             batch.map(order => processOrderDistance(order, updatedOrders.length))
           );
           
-          endPerformanceTracking(`calculateDistances.processBatch.${batchNumber}`, {
-            batchSize: batch.length,
-            batchNumber
-          });
+          endPerformanceTracking(`calculateDistances.processBatch.${batchNumber}`);
         })
       );
     } catch (error) {
@@ -72,13 +72,9 @@ export const calculateDistances = async (
     }
   }
   
-  endPerformanceTracking('calculateDistances.processBatches', { 
-    batchCount: batches.length, 
-    ordersProcessed: updatedOrders.length 
-  });
+  endPerformanceTracking('calculateDistances.processBatches');
   
   const totalWithDistance = updatedOrders.filter(o => o.estimatedDistance !== undefined).length;
-  // Fix: Remove reference to performanceLogger, use a calculation from now instead
   const startTime = performance.now();
   const totalTimeSeconds = (performance.now() - startTime) / 1000;
   
@@ -89,11 +85,8 @@ export const calculateDistances = async (
     averageTimePerOrder: (totalTimeSeconds / updatedOrders.length).toFixed(2)
   });
   
-  endPerformanceTracking('calculateDistances', { 
-    totalOrders: updatedOrders.length, 
-    ordersWithDistance: totalWithDistance,
-    timeSeconds: totalTimeSeconds.toFixed(2)
-  });
+  endBatchLogging(); // End batch operations
+  endPerformanceTracking('calculateDistances');
   
   return updatedOrders;
 };
@@ -102,19 +95,14 @@ export const calculateDistances = async (
  * Process a single order's distance with improved error handling and caching
  */
 async function processOrderDistance(order: DeliveryOrder, totalOrderCount: number): Promise<void> {
-  startPerformanceTracking(`processOrderDistance.${order.id}`, {
-    hasPickup: !!order.pickup,
-    hasDropoff: !!order.dropoff
-  });
+  startPerformanceTracking(`processOrderDistance.${order.id}`);
   
   try {
     // Already has a distance? Skip calculation
     if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
       order.estimatedDistance = parseFloat(order.distance.toString());
-      logProgress(order.id, totalOrderCount);
       endPerformanceTracking(`processOrderDistance.${order.id}`, { 
-        result: 'used-existing', 
-        distance: order.estimatedDistance 
+        result: 'used-existing'
       });
       return;
     }
@@ -131,40 +119,27 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
           
           // If not cached, geocode the addresses
           if (!pickupCoords) {
-            logDebug(`Geocoding pickup address: ${order.pickup}`);
             startPerformanceTracking(`geocodeAddress.${order.id}.pickup`);
             pickupCoords = await geocodeWithTimeout(order.pickup);
-            endPerformanceTracking(`geocodeAddress.${order.id}.pickup`, { 
-              success: !!pickupCoords,
-              coords: pickupCoords
-            });
+            endPerformanceTracking(`geocodeAddress.${order.id}.pickup`);
             
             if (pickupCoords) {
               cacheAddress(order.pickup, pickupCoords);
             }
-          } else {
-            logDebug(`Using cached pickup coordinates for ${order.pickup}`);
           }
           
           if (!dropoffCoords) {
-            logDebug(`Geocoding dropoff address: ${order.dropoff}`);
             startPerformanceTracking(`geocodeAddress.${order.id}.dropoff`);
             dropoffCoords = await geocodeWithTimeout(order.dropoff);
-            endPerformanceTracking(`geocodeAddress.${order.id}.dropoff`, { 
-              success: !!dropoffCoords,
-              coords: dropoffCoords
-            });
+            endPerformanceTracking(`geocodeAddress.${order.id}.dropoff`);
             
             if (dropoffCoords) {
               cacheAddress(order.dropoff, dropoffCoords);
             }
-          } else {
-            logDebug(`Using cached dropoff coordinates for ${order.dropoff}`);
           }
           
           // Calculate route distance if we have both coordinates
           if (pickupCoords && dropoffCoords) {
-            logDebug(`Calculating route distance for ${order.id}`);
             startPerformanceTracking(`calculateRouteDistance.${order.id}`);
             
             // Calculate route distance with timeout
@@ -175,48 +150,24 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
               )
             ]);
             
-            endPerformanceTracking(`calculateRouteDistance.${order.id}`, { 
-              success: routeDistance !== null,
-              distance: routeDistance
-            });
+            endPerformanceTracking(`calculateRouteDistance.${order.id}`);
             
             if (routeDistance !== null) {
-              order.estimatedDistance = Number(routeDistance.toFixed(1));
-              logProgress(order.id, totalOrderCount);
+              order.estimatedDistance = typeof routeDistance === 'number' ? 
+                Number(routeDistance.toFixed(1)) : generateDefaultDistance();
               
-              endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`, { 
-                success: true,
-                distance: order.estimatedDistance,
-                attempt: attempt + 1
-              });
-              
-              endPerformanceTracking(`processOrderDistance.${order.id}`, { 
-                result: 'calculated', 
-                distance: order.estimatedDistance,
-                attempts: attempt + 1
-              });
+              endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`);
+              endPerformanceTracking(`processOrderDistance.${order.id}`);
               
               return; // Success, exit the function
             }
           } else {
             // Could not get coordinates for one or both addresses
-            logWarning(`Could not geocode addresses for order ${order.id}`, {
-              pickupSuccess: !!pickupCoords,
-              dropoffSuccess: !!dropoffCoords,
-              pickup: order.pickup,
-              dropoff: order.dropoff
-            });
-            
-            endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`, { 
-              success: false,
-              reason: 'geocoding-failed',
-              attempt: attempt + 1
-            });
+            endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`);
             
             // Use a default distance if it's the last attempt
             if (attempt === MAX_RETRIES) {
               order.estimatedDistance = generateDefaultDistance();
-              logProgress(order.id, totalOrderCount);
             }
           }
         } catch (error) {
@@ -224,56 +175,34 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
           
           // Last attempt? Log error and use default
           if (attempt === MAX_RETRIES) {
-            logError(`Failed to calculate distance for order ${order.id} after ${MAX_RETRIES + 1} attempts: ${errorMessage}`);
+            logError(`Failed to calculate distance for order ${order.id}`, error);
             order.estimatedDistance = generateDefaultDistance();
-            logProgress(order.id, totalOrderCount);
-          } else {
-            // Not last attempt, wait briefly before retry
-            logWarning(`Attempt ${attempt + 1} failed for order ${order.id}: ${errorMessage}. Retrying...`);
-            await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retry
           }
           
-          endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`, { 
-            success: false,
-            error: errorMessage,
-            attempt: attempt + 1
-          });
+          endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`);
         }
       }
     } else {
       // Missing pickup or dropoff, use default
-      logWarning(`Missing pickup or dropoff for order ${order.id}, using default distance`, {
-        hasPickup: !!order.pickup,
-        hasDropoff: !!order.dropoff
-      });
-      
       order.estimatedDistance = generateDefaultDistance();
-      logProgress(order.id, totalOrderCount);
     }
     
     // If we got here, we used a default distance
-    endPerformanceTracking(`processOrderDistance.${order.id}`, { 
-      result: 'default', 
-      distance: order.estimatedDistance
-    });
+    endPerformanceTracking(`processOrderDistance.${order.id}`);
   } catch (error) {
     logError(`Unexpected error processing order ${order.id}:`, error);
     // Ensure we still set a distance even in case of errors
     order.estimatedDistance = generateDefaultDistance();
-    logProgress(order.id, totalOrderCount);
     
-    endPerformanceTracking(`processOrderDistance.${order.id}`, { 
-      result: 'error', 
-      distance: order.estimatedDistance,
-      error: error instanceof Error ? error.message : String(error)
-    });
+    endPerformanceTracking(`processOrderDistance.${order.id}`);
   }
 }
 
 /**
  * Geocode an address with timeout protection
+ * Fix for the Type 'unknown' is not assignable to type 'number' error
  */
-async function geocodeWithTimeout(address: string): Promise<[number, number] | null> {
+async function geocodeWithTimeout(address: string): Promise<Coordinates | null> {
   try {
     const result = await Promise.race([
       geocodeAddress(address),
@@ -285,15 +214,15 @@ async function geocodeWithTimeout(address: string): Promise<[number, number] | n
     // Return result directly if it's already a valid tuple
     if (result && Array.isArray(result) && result.length === 2 && 
         typeof result[0] === 'number' && typeof result[1] === 'number') {
-      return result as [number, number];
+      return [result[0], result[1]]; // Explicitly return as Coordinates
     }
     
     // Handle object with longitude/latitude properties
     if (result && typeof result === 'object' && 'longitude' in result && 'latitude' in result) {
-      const lng = Number(result.longitude);
-      const lat = Number(result.latitude);
+      const lng = Number((result as any).longitude);
+      const lat = Number((result as any).latitude);
       if (!isNaN(lng) && !isNaN(lat)) {
-        return [lng, lat];
+        return [lng, lat]; // Explicitly return as Coordinates
       }
     }
     
@@ -303,18 +232,6 @@ async function geocodeWithTimeout(address: string): Promise<[number, number] | n
     return null;
   }
 }
-
-// Log progress to console for debugging
-const logProgress = (orderId: string, total: number) => {
-  const current = parseInt(orderId.replace('order-', ''));
-  const percentage = Math.round((current / total) * 100);
-  logDebug(`Distance calculation progress: ${orderId}/${total} (${percentage}%)`);
-};
-
-// Log warning with timestamp
-const logWarning = (message: string, data?: any) => {
-  logDebug(`⚠️ WARNING: ${message}`, data);
-};
 
 // Generate a default distance if real calculation fails
 const generateDefaultDistance = (): number => {

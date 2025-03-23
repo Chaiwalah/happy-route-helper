@@ -1,6 +1,6 @@
-
 import { DeliveryOrder } from './csvParser';
 import { calculateRouteDistance, geocodeAddress } from './mapboxService';
+import { startPerformanceTracking, endPerformanceTracking, cacheAddress, getCachedAddress } from './performanceLogger';
 
 // Define the Coordinates type to match mapboxService
 type Coordinates = [number, number]; // [longitude, latitude]
@@ -12,12 +12,15 @@ const distanceCache: { [key: string]: number } = {};
  * Calculate the total route distance for multi-stop routes using Mapbox Directions API
  */
 export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder[]): Promise<number> => {
+  startPerformanceTracking('calculateMultiStopRouteDistance', { orderCount: routeOrders.length });
+
   // Generate a cache key based on order IDs
   const cacheKey = routeOrders.map(order => order.id).join('|');
   
   // Check if we already calculated this route
   if (distanceCache[cacheKey] !== undefined) {
     console.log(`Using cached distance for route with ${routeOrders.length} orders`);
+    endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'cache' });
     return distanceCache[cacheKey];
   }
   
@@ -31,12 +34,14 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
       const distance = parseFloat(order.distance.toString());
       distanceCache[cacheKey] = distance;
+      endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'csv' });
       return distance;
     }
     
     // If we have estimatedDistance from earlier calculation, use it
     if (order.estimatedDistance) {
       distanceCache[cacheKey] = order.estimatedDistance;
+      endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'estimated' });
       return order.estimatedDistance;
     }
     
@@ -44,15 +49,33 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     if (order.pickup && order.dropoff) {
       try {
         // First geocode both addresses to get coordinates
-        const pickupCoords = await geocodeAddress(order.pickup);
-        const dropoffCoords = await geocodeAddress(order.dropoff);
+        let pickupCoords = getCachedAddress(order.pickup);
+        if (!pickupCoords) {
+          pickupCoords = await geocodeAddress(order.pickup);
+          if (pickupCoords) {
+            cacheAddress(order.pickup, pickupCoords);
+          }
+        }
+        
+        let dropoffCoords = getCachedAddress(order.dropoff);
+        if (!dropoffCoords) {
+          dropoffCoords = await geocodeAddress(order.dropoff);
+          if (dropoffCoords) {
+            cacheAddress(order.dropoff, dropoffCoords);
+          }
+        }
         
         if (pickupCoords && dropoffCoords) {
-          // Since geocodeAddress now returns Coordinates type or null, we can use them directly
-          const routeDistance = await calculateRouteDistance([pickupCoords, dropoffCoords]);
+          // Ensure coordinates are correctly typed
+          const routeDistance = await calculateRouteDistance([
+            pickupCoords as Coordinates, 
+            dropoffCoords as Coordinates
+          ]);
+          
           if (routeDistance !== null) {
             const distance = Number(routeDistance.toFixed(1));
             distanceCache[cacheKey] = distance;
+            endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'calculated' });
             return distance;
           }
         }
@@ -64,6 +87,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     // Fallback to estimatedDistance or 0 if everything fails
     const fallback = order.estimatedDistance || 0;
     distanceCache[cacheKey] = fallback;
+    endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'fallback' });
     return fallback;
   }
   
@@ -82,6 +106,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     
     const distance = Number(totalDistance.toFixed(1));
     distanceCache[cacheKey] = distance;
+    endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'simplified' });
     return distance;
   }
   
@@ -101,6 +126,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     
     const distance = Number(totalDistance.toFixed(1));
     distanceCache[cacheKey] = distance;
+    endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'pre-calculated' });
     return distance;
   }
   
@@ -122,9 +148,20 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   
   // Geocode all addresses first
   for (const address of addresses) {
+    // Check cache first
+    const cachedCoords = getCachedAddress(address);
+    if (cachedCoords) {
+      coordinates.push(cachedCoords);
+      continue;
+    }
+    
+    // If not in cache, geocode it
     const coords = await geocodeAddress(address);
-    if (coords) {
-      coordinates.push(coords);
+    if (coords && Array.isArray(coords) && coords.length === 2 && 
+        typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      const typedCoords: Coordinates = [coords[0], coords[1]];
+      coordinates.push(typedCoords);
+      cacheAddress(address, typedCoords);
     }
   }
   
@@ -136,6 +173,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
       if (routeDistance !== null) {
         const distance = Number(routeDistance.toFixed(1));
         distanceCache[cacheKey] = distance;
+        endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'full-route' });
         return distance;
       }
     } catch (error) {
@@ -155,5 +193,6 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   
   const distance = Number(fallbackDistance.toFixed(1));
   distanceCache[cacheKey] = distance;
+  endPerformanceTracking('calculateMultiStopRouteDistance', { source: 'fallback-sum' });
   return distance;
 };
