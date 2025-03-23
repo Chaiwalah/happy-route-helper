@@ -46,6 +46,11 @@ const processQueue = async () => {
   }
 };
 
+// Get the mapbox token (default or from localStorage)
+export const getMapboxToken = (): string => {
+  return localStorage.getItem('mapbox_token') || MAPBOX_TOKEN;
+};
+
 // Convert an address string to coordinates
 export const geocodeAddress = async (address: string): Promise<Coordinates | null> => {
   if (!address || address.trim() === '') {
@@ -69,10 +74,11 @@ export const geocodeAddress = async (address: string): Promise<Coordinates | nul
     const performRequest = async () => {
       try {
         console.log(`Geocoding address: ${address}`);
+        const token = getMapboxToken();
         const encodedAddress = encodeURIComponent(address);
         const response = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${MAPBOX_TOKEN}`,
-          { signal: AbortSignal.timeout(5000) } // Reduced timeout from 8s to 5s
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${token}`,
+          { signal: AbortSignal.timeout(5000) }
         );
         
         if (!response.ok) {
@@ -153,8 +159,9 @@ export const getRouteGeometry = async (coordinates: Coordinates[]): Promise<any 
           .map(coord => `${coord[0]},${coord[1]}`)
           .join(';');
         
+        const token = getMapboxToken();
         const response = await fetch(
-          `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`,
+          `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?geometries=geojson&overview=full&access_token=${token}`,
           { signal: AbortSignal.timeout(5000) }
         );
         
@@ -242,9 +249,10 @@ export const calculateRouteDistance = async (coordinates: Coordinates[]): Promis
           .map(coord => `${coord[0]},${coord[1]}`)
           .join(';');
         
+        const token = getMapboxToken();
         const response = await fetch(
-          `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${MAPBOX_TOKEN}`,
-          { signal: AbortSignal.timeout(5000) } // Reduced timeout from 8s to 5s
+          `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsString}?overview=full&geometries=geojson&access_token=${token}`,
+          { signal: AbortSignal.timeout(5000) }
         );
         
         if (!response.ok) {
