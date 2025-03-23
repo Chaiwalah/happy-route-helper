@@ -1,9 +1,13 @@
+
 // Mapbox service for geocoding and directions
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw';
 
+// Coordinate type to ensure consistent usage
+type Coordinates = [number, number]; // [longitude, latitude]
+
 // Cache for geocoded addresses to avoid duplicate API calls
 type GeocodingCache = {
-  [address: string]: [number, number] | null;
+  [address: string]: Coordinates | null;
 };
 
 // Shared cache that persists during the session
@@ -40,7 +44,7 @@ const processQueue = async () => {
 };
 
 // Convert an address string to coordinates
-export const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
+export const geocodeAddress = async (address: string): Promise<Coordinates | null> => {
   if (!address || address.trim() === '') {
     console.warn('Empty address provided for geocoding');
     return null;
@@ -76,7 +80,7 @@ export const geocodeAddress = async (address: string): Promise<[number, number] 
         
         if (data.features && data.features.length > 0) {
           // Create coordinates as a tuple [longitude, latitude]
-          const coords: [number, number] = [
+          const coords: Coordinates = [
             data.features[0].center[0],
             data.features[0].center[1]
           ];
@@ -116,12 +120,12 @@ export const geocodeAddress = async (address: string): Promise<[number, number] 
 };
 
 // Generate a cache key for routes
-const getRouteKey = (coordinates: [number, number][]): string => {
+const getRouteKey = (coordinates: Coordinates[]): string => {
   return coordinates.map(coord => coord.join(',')).join('|');
 };
 
 // Calculate route distance between multiple stops
-export const calculateRouteDistance = async (coordinates: [number, number][]): Promise<number | null> => {
+export const calculateRouteDistance = async (coordinates: Coordinates[]): Promise<number | null> => {
   if (!coordinates || coordinates.length < 2) {
     console.warn('Need at least two coordinates to calculate a route');
     return null;

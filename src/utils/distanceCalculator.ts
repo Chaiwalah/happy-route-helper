@@ -139,9 +139,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
               coords: pickupCoords
             });
             
-            // Fix: Use the coordinates as a tuple, not as a string
             if (pickupCoords) {
-              // Since TypeScript knows pickupCoords is not null here, we can safely pass it
               cacheAddress(order.pickup, pickupCoords);
             }
           } else {
@@ -157,9 +155,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
               coords: dropoffCoords
             });
             
-            // Fix: Use the coordinates as a tuple, not as a string
             if (dropoffCoords) {
-              // Since TypeScript knows dropoffCoords is not null here, we can safely pass it
               cacheAddress(order.dropoff, dropoffCoords);
             }
           } else {
@@ -279,7 +275,6 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
  */
 async function geocodeWithTimeout(address: string): Promise<[number, number] | null> {
   try {
-    // Fix: Ensure the return type is a tuple [number, number] or null
     const result = await Promise.race([
       geocodeAddress(address),
       new Promise<null>((_, reject) => 
@@ -287,16 +282,19 @@ async function geocodeWithTimeout(address: string): Promise<[number, number] | n
       )
     ]);
     
-    // Fix: Ensure we convert the result to the correct format if needed
-    if (result && Array.isArray(result) && result.length === 2) {
-      // It's already in the correct [lng, lat] tuple format
+    // Return result directly if it's already a valid tuple
+    if (result && Array.isArray(result) && result.length === 2 && 
+        typeof result[0] === 'number' && typeof result[1] === 'number') {
       return result as [number, number];
-    } else if (result && typeof result === 'object' && 'longitude' in result && 'latitude' in result) {
-      // Convert from {longitude, latitude} format to [lng, lat] tuple
-      // Add explicit type assertion for each coordinate
+    }
+    
+    // Handle object with longitude/latitude properties
+    if (result && typeof result === 'object' && 'longitude' in result && 'latitude' in result) {
       const lng = Number(result.longitude);
       const lat = Number(result.latitude);
-      return [lng, lat];
+      if (!isNaN(lng) && !isNaN(lat)) {
+        return [lng, lat];
+      }
     }
     
     return null;

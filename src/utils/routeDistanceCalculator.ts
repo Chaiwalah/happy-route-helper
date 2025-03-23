@@ -1,5 +1,9 @@
+
 import { DeliveryOrder } from './csvParser';
 import { calculateRouteDistance, geocodeAddress } from './mapboxService';
+
+// Define the Coordinates type to match mapboxService
+type Coordinates = [number, number]; // [longitude, latitude]
 
 // Cache for route distance calculations
 const distanceCache: { [key: string]: number } = {};
@@ -44,6 +48,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
         const dropoffCoords = await geocodeAddress(order.dropoff);
         
         if (pickupCoords && dropoffCoords) {
+          // Since geocodeAddress now returns Coordinates type or null, we can use them directly
           const routeDistance = await calculateRouteDistance([pickupCoords, dropoffCoords]);
           if (routeDistance !== null) {
             const distance = Number(routeDistance.toFixed(1));
@@ -101,7 +106,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   
   // Otherwise, extract all addresses in order to calculate the full chain distance
   const addresses: string[] = [];
-  const coordinates: [number, number][] = [];
+  const coordinates: Coordinates[] = [];
   
   // Start with the pickup of the first order (assuming all orders in a trip start from the same pharmacy)
   if (routeOrders[0].pickup) {
