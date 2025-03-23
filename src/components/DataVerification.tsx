@@ -1,31 +1,42 @@
-
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import React from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
-import { useState, useEffect } from 'react';
 import { OrderDetails } from './data-verification/OrderDetails';
 import { VerificationSidebar } from './data-verification/VerificationSidebar';
 import { useOrderVerification } from './data-verification/hooks/useOrderVerification';
-import { markOrdersWithNoiseTrips } from '@/utils/routeOrganizer';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { processFieldValue } from './data-verification/hooks/useOrderVerification/statusUtils';
 
 interface DataVerificationProps {
   orders: DeliveryOrder[];
+  onOrdersVerified: (updatedOrders: DeliveryOrder[]) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onOrdersVerified: (updatedOrders: DeliveryOrder[]) => void;
 }
 
 export function DataVerification({
   orders,
+  onOrdersVerified,
   open,
-  onOpenChange,
-  onOrdersVerified
+  onOpenChange
 }: DataVerificationProps) {
-  // Mark orders with noise trip numbers but don't filter them
-  const initialOrders = markOrdersWithNoiseTrips(orders);
-  
+  // Initialize the orders before passing to useOrderVerification
+  const initializedOrders = orders.map(order => ({
+    ...order,
+    // Make sure tripNumber is not undefined or null
+    tripNumber: order.tripNumber !== undefined && order.tripNumber !== null 
+      ? processFieldValue(order.tripNumber) 
+      : '',
+    // Make sure driver is not undefined or null
+    driver: order.driver !== undefined && order.driver !== null 
+      ? processFieldValue(order.driver) 
+      : 'Unassigned',
+    // Ensure missingFields exists
+    missingFields: order.missingFields || []
+  }));
+
   const {
     ordersWithIssues,
     selectedOrderId,
@@ -33,8 +44,8 @@ export function DataVerification({
     selectedOrder,
     editingField,
     fieldValue,
-    isSavingField,
     validationMessage,
+    isSavingField,
     suggestedTripNumbers,
     suggestedDrivers,
     handleFieldEdit,
@@ -43,9 +54,13 @@ export function DataVerification({
     handleOrdersApprove,
     getFieldValidationStatus
   } = useOrderVerification({ 
-    orders: initialOrders, 
-    onOrdersVerified
+    orders: initializedOrders, 
+    onOrdersVerified 
   });
+
+  // Add some console logging to check what's happening
+  console.log('[DataVerification] Orders with issues:', ordersWithIssues);
+  console.log('[DataVerification] Selected order:', selectedOrder);
 
   // If Dialog props are provided, render in a Dialog
   if (open !== undefined && onOpenChange !== undefined) {
@@ -62,27 +77,29 @@ export function DataVerification({
             <div className="w-full md:w-1/3 border-r p-4 overflow-auto max-h-[60vh] md:max-h-full">
               <VerificationSidebar
                 ordersRequiringVerification={ordersWithIssues}
-                verifiedOrders={orders}
+                verifiedOrders={initializedOrders}
                 selectedOrderId={selectedOrderId}
                 onOrderSelect={setSelectedOrderId}
                 ordersWithTripNumberIssues={ordersWithIssues}
               />
             </div>
             <div className="w-full md:w-2/3 p-4 overflow-auto max-h-[60vh] md:max-h-full">
-              <OrderDetails
-                selectedOrder={selectedOrder}
-                editingField={editingField}
-                fieldValue={fieldValue}
-                onFieldEdit={handleFieldEdit}
-                onFieldValueChange={handleFieldValueChange}
-                onFieldUpdate={handleFieldUpdate}
-                ordersWithTripNumberIssues={ordersWithIssues}
-                isSavingField={isSavingField}
-                validationMessage={validationMessage}
-                suggestedTripNumbers={suggestedTripNumbers}
-                suggestedDrivers={suggestedDrivers}
-                getFieldValidationStatus={getFieldValidationStatus}
-              />
+              {selectedOrder && (
+                <OrderDetails
+                  selectedOrder={selectedOrder}
+                  editingField={editingField}
+                  fieldValue={fieldValue}
+                  onFieldEdit={handleFieldEdit}
+                  onFieldValueChange={handleFieldValueChange}
+                  onFieldUpdate={handleFieldUpdate}
+                  ordersWithTripNumberIssues={ordersWithIssues}
+                  isSavingField={isSavingField}
+                  validationMessage={validationMessage}
+                  suggestedTripNumbers={suggestedTripNumbers}
+                  suggestedDrivers={suggestedDrivers}
+                  getFieldValidationStatus={getFieldValidationStatus}
+                />
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -104,27 +121,29 @@ export function DataVerification({
       <div className="w-full md:w-1/3 border-r p-4 overflow-auto h-[300px] md:h-full">
         <VerificationSidebar
           ordersRequiringVerification={ordersWithIssues}
-          verifiedOrders={orders}
+          verifiedOrders={initializedOrders}
           selectedOrderId={selectedOrderId}
           onOrderSelect={setSelectedOrderId}
           ordersWithTripNumberIssues={ordersWithIssues}
         />
       </div>
       <div className="w-full md:w-2/3 p-4 overflow-auto h-[400px] md:h-full">
-        <OrderDetails
-          selectedOrder={selectedOrder}
-          editingField={editingField}
-          fieldValue={fieldValue}
-          onFieldEdit={handleFieldEdit}
-          onFieldValueChange={handleFieldValueChange}
-          onFieldUpdate={handleFieldUpdate}
-          ordersWithTripNumberIssues={ordersWithIssues}
-          isSavingField={isSavingField}
-          validationMessage={validationMessage}
-          suggestedTripNumbers={suggestedTripNumbers}
-          suggestedDrivers={suggestedDrivers}
-          getFieldValidationStatus={getFieldValidationStatus}
-        />
+        {selectedOrder && (
+          <OrderDetails
+            selectedOrder={selectedOrder}
+            editingField={editingField}
+            fieldValue={fieldValue}
+            onFieldEdit={handleFieldEdit}
+            onFieldValueChange={handleFieldValueChange}
+            onFieldUpdate={handleFieldUpdate}
+            ordersWithTripNumberIssues={ordersWithIssues}
+            isSavingField={isSavingField}
+            validationMessage={validationMessage}
+            suggestedTripNumbers={suggestedTripNumbers}
+            suggestedDrivers={suggestedDrivers}
+            getFieldValidationStatus={getFieldValidationStatus}
+          />
+        )}
       </div>
       <div className="p-4 border-t flex justify-end">
         <Button onClick={handleOrdersApprove}>
