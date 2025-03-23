@@ -11,8 +11,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
-import { CalendarIcon, XCircle } from 'lucide-react';
+import { CalendarIcon, XCircle, SortAsc, SortDesc } from 'lucide-react';
 import { startPerformanceTracking, endPerformanceTracking, logPerformance } from '@/utils/performanceLogger';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface MapTabProps {
   orders: DeliveryOrder[];
@@ -24,6 +26,7 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
   const [isMapReady, setIsMapReady] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [sortByDistance, setSortByDistance] = useState<'asc' | 'desc' | null>(null);
   
   // Get unique drivers from orders
   const drivers = useMemo(() => {
@@ -56,6 +59,97 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
     });
     return Array.from(dateSet).sort();
   }, [orders]);
+
+  // Get unique trips
+  const trips = useMemo(() => {
+    const tripSet = new Set<string>();
+    orders.forEach(order => {
+      if (order.tripNumber && order.tripNumber.trim()) {
+        tripSet.add(order.tripNumber);
+      }
+    });
+    return Array.from(tripSet).sort();
+  }, [orders]);
+
+  // Driver statistics by date
+  const driverStats = useMemo(() => {
+    const stats: Record<string, { 
+      totalOrders: number; 
+      totalDistance: number;
+      tripCounts: Record<string, number>;
+      date: string;
+    }> = {};
+    
+    orders.forEach(order => {
+      if (!order.driver || !order.driver.trim()) return;
+      
+      // Get date from order
+      let dateStr = order.date ? order.date.split('T')[0] : null;
+      if (!dateStr && order.exReadyTime) {
+        dateStr = order.exReadyTime.split('T')[0];
+      } else if (!dateStr && order.exDeliveryTime) {
+        dateStr = order.exDeliveryTime.split('T')[0];
+      }
+      
+      if (!dateStr) return;
+      
+      // Skip if filtered by date and doesn't match
+      if (selectedDate && dateStr !== format(selectedDate, 'yyyy-MM-dd')) return;
+      
+      // Skip if filtered by driver and doesn't match
+      if (selectedDriver && order.driver !== selectedDriver) return;
+      
+      const key = `${order.driver}_${dateStr}`;
+      
+      if (!stats[key]) {
+        stats[key] = { 
+          totalOrders: 0, 
+          totalDistance: 0,
+          tripCounts: {},
+          date: dateStr
+        };
+      }
+      
+      stats[key].totalOrders++;
+      
+      // Add distance if available
+      if (order.estimatedDistance) {
+        stats[key].totalDistance += Number(order.estimatedDistance);
+      } else if (order.distance) {
+        stats[key].totalDistance += Number(order.distance);
+      }
+      
+      // Count trips
+      if (order.tripNumber && order.tripNumber.trim()) {
+        if (!stats[key].tripCounts[order.tripNumber]) {
+          stats[key].tripCounts[order.tripNumber] = 0;
+        }
+        stats[key].tripCounts[order.tripNumber]++;
+      }
+    });
+    
+    // Convert to array and sort
+    let statsArray = Object.entries(stats).map(([key, value]) => {
+      const [driver, date] = key.split('_');
+      return {
+        driver,
+        date,
+        totalOrders: value.totalOrders,
+        totalDistance: parseFloat(value.totalDistance.toFixed(1)),
+        tripCounts: value.tripCounts,
+        tripCount: Object.keys(value.tripCounts).length
+      };
+    });
+    
+    // Sort by distance if requested
+    if (sortByDistance === 'asc') {
+      statsArray = statsArray.sort((a, b) => a.totalDistance - b.totalDistance);
+    } else if (sortByDistance === 'desc') {
+      statsArray = statsArray.sort((a, b) => b.totalDistance - a.totalDistance);
+    }
+    
+    return statsArray;
+  }, [orders, selectedDriver, selectedDate, sortByDistance]);
 
   // Increased limit, but with memoization for better performance
   const ORDER_LIMIT = 1000; // Increased to handle multiple routes for visualization
@@ -188,12 +282,23 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
   const resetFilters = () => {
     setSelectedDriver(null);
     setSelectedDate(null);
+    setSortByDistance(null);
+  };
+
+  const toggleSortByDistance = () => {
+    if (sortByDistance === null) {
+      setSortByDistance('desc');
+    } else if (sortByDistance === 'desc') {
+      setSortByDistance('asc');
+    } else {
+      setSortByDistance(null);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight">Map Visualization</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Driver Route Visualization</h2>
         <p className="text-muted-foreground">
           {!isMapReady ? 'Loading map...' : (
             orders.length > ORDER_LIMIT && !selectedDriver && !selectedDate
@@ -250,7 +355,23 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
           </Popover>
         </div>
 
-        {(selectedDriver || selectedDate) && (
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={toggleSortByDistance}
+          className={sortByDistance ? "bg-blue-50 dark:bg-blue-950" : ""}
+          title="Sort by distance"
+        >
+          {sortByDistance === 'asc' ? (
+            <SortAsc className="h-4 w-4 text-blue-600" />
+          ) : sortByDistance === 'desc' ? (
+            <SortDesc className="h-4 w-4 text-blue-600" />
+          ) : (
+            <SortAsc className="h-4 w-4" />
+          )}
+        </Button>
+
+        {(selectedDriver || selectedDate || sortByDistance) && (
           <Button 
             variant="outline" 
             onClick={resetFilters}
@@ -262,7 +383,45 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
         )}
       </div>
       
-      <ScrollArea className="h-[calc(100vh-280px)]">
+      {driverStats.length > 0 && (
+        <ScrollArea className="h-[150px] border rounded-md p-4">
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium">Driver Trip Summary</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {driverStats.map((stat, index) => (
+                <Card key={`${stat.driver}-${stat.date}-${index}`} className="bg-white dark:bg-gray-800">
+                  <CardHeader className="p-3 pb-0">
+                    <CardTitle className="text-sm flex justify-between items-center">
+                      <span>{stat.driver}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {stat.date}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-2">
+                    <div className="grid grid-cols-3 text-xs gap-2">
+                      <div>
+                        <p className="text-gray-500">Orders</p>
+                        <p className="font-medium">{stat.totalOrders}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Trips</p>
+                        <p className="font-medium">{stat.tripCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Distance</p>
+                        <p className="font-medium">{stat.totalDistance} mi</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </ScrollArea>
+      )}
+      
+      <ScrollArea className="h-[calc(100vh-500px)]">
         {!isMapReady ? (
           <div className="flex items-center justify-center h-80">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

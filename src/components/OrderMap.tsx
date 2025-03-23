@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -6,11 +7,11 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, AlertCircle, Info, Clock, Navigation } from 'lucide-react';
+import { MapPin, AlertCircle, Info, Clock, Navigation, TruckIcon } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
 import { debounce } from '@/lib/utils';
-import { geocodeAddress, calculateRouteDistance } from '@/utils/mapboxService';
+import { geocodeAddress, calculateRouteDistance, getDriverColor } from '@/utils/mapboxService';
 import { formatDate, formatTime } from '@/utils/dateFormatter';
 
 interface OrderMapProps {
@@ -30,6 +31,8 @@ interface MapLocation {
   longitude: number;
   time?: string;
   coordinates: [number, number]; // [longitude, latitude] for Mapbox
+  tripNumber?: string;
+  distance?: number;
 }
 
 interface DriverRoute {
@@ -37,38 +40,8 @@ interface DriverRoute {
   date: string;
   color: string;
   stops: MapLocation[];
+  totalDistance: number;
 }
-
-// Create a fixed color mapping for drivers to ensure consistency
-const getDriverColor = (driver: string): string => {
-  // Hash the driver name to get a consistent number
-  let hash = 0;
-  for (let i = 0; i < driver.length; i++) {
-    hash = driver.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  // List of distinct, visually pleasing colors
-  const colors = [
-    '#3498db', // blue
-    '#2ecc71', // green
-    '#e74c3c', // red
-    '#9b59b6', // purple
-    '#f1c40f', // yellow
-    '#1abc9c', // teal
-    '#d35400', // orange
-    '#34495e', // dark blue
-    '#16a085', // green blue
-    '#c0392b', // dark red
-    '#8e44ad', // dark purple
-    '#f39c12', // dark yellow
-    '#27ae60', // dark green
-    '#2980b9', // dark blue
-  ];
-  
-  // Use the hash to select a color
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
-};
 
 const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedDate = null }: OrderMapProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -83,6 +56,7 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const [driverRoutes, setDriverRoutes] = useState<DriverRoute[]>([]);
   const routeSourcesRef = useRef<string[]>([]);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   
   // Process batches to avoid UI freezing
   const processBatch = async (
@@ -112,7 +86,9 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
                     latitude: coords[1],
                     longitude: coords[0],
                     time: order.actualPickupTime || order.exReadyTime,
-                    coordinates: coords
+                    coordinates: coords,
+                    tripNumber: order.tripNumber,
+                    distance: order.estimatedDistance
                   });
                 }
               })
@@ -132,7 +108,9 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
                     latitude: coords[1],
                     longitude: coords[0],
                     time: order.actualDeliveryTime || order.exDeliveryTime,
-                    coordinates: coords
+                    coordinates: coords,
+                    tripNumber: order.tripNumber,
+                    distance: order.estimatedDistance
                   });
                 }
               })
@@ -308,6 +286,18 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
             } else {
               timeText = `<div class="flex items-center gap-1 text-gray-500"><span class="text-xs">⏱</span> No time data</div>`;
             }
+
+            // Add trip number if available
+            let tripNumberText = '';
+            if (feature.properties.tripNumber) {
+              tripNumberText = `<div class="flex items-center gap-1 text-gray-700"><span class="text-xs">🚚</span> Trip: ${feature.properties.tripNumber}</div>`;
+            }
+
+            // Add distance if available
+            let distanceText = '';
+            if (feature.properties.distance) {
+              distanceText = `<div class="flex items-center gap-1 text-gray-700"><span class="text-xs">📏</span> Distance: ${feature.properties.distance} mi</div>`;
+            }
             
             const description = `
               <div class="p-1">
@@ -315,6 +305,8 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
                 <div class="text-xs text-gray-600">${feature.properties.type === 'pickup' ? 'Pickup' : 'Dropoff'}</div>
                 <div class="text-sm mt-1">${feature.properties.address}</div>
                 ${timeText}
+                ${tripNumberText}
+                ${distanceText}
                 <div class="text-xs text-gray-500 mt-1">Order ID: ${feature.properties.orderId}</div>
               </div>
             `;
@@ -405,6 +397,9 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
   const createDriverRoutes = (locations: MapLocation[]) => {
     if (!map.current || locations.length === 0) return;
     
+    // Clear existing markers
+    clearMarkers();
+    
     // Group locations by driver and date
     const locationsByDriverAndDate = new Map<string, MapLocation[]>();
     
@@ -415,7 +410,8 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
       // Get date from the order
       const orderWithDate = orders.find(order => order.id === location.orderId);
       const orderDate = orderWithDate?.date || 
-                        (orderWithDate?.exReadyTime ? orderWithDate.exReadyTime.split('T')[0] : null);
+                        (orderWithDate?.exReadyTime ? orderWithDate.exReadyTime.split('T')[0] : null) ||
+                        (orderWithDate?.exDeliveryTime ? orderWithDate.exDeliveryTime.split('T')[0] : null);
       
       if (!orderDate) return;
       
@@ -464,11 +460,17 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
       // Get a consistent color for this driver
       const color = getDriverColor(driver);
       
+      // Calculate total distance for this route
+      const totalDistance = locs.reduce((sum, loc) => {
+        return sum + (loc.distance || 0);
+      }, 0);
+      
       routes.push({
         driver,
         date,
         color,
-        stops: locs
+        stops: locs,
+        totalDistance: parseFloat(totalDistance.toFixed(1))
       });
     }
     
@@ -483,7 +485,87 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
       
       const coordinatesList = route.stops.map(stop => stop.coordinates);
       drawRoute(route.driver, route.date, coordinatesList, route.color, index);
+      
+      // Add markers for each stop in the route
+      route.stops.forEach((stop, stopIndex) => {
+        addMarker(stop, route.color, stopIndex, stopIndex === 0);
+      });
     });
+    
+    // Fit map to show all markers if we have any
+    if (markersRef.current.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      
+      markersRef.current.forEach(marker => {
+        bounds.extend(marker.getLngLat());
+      });
+      
+      map.current.fitBounds(bounds, {
+        padding: 50,
+        maxZoom: 13
+      });
+    }
+  };
+  
+  // Add a custom marker to the map
+  const addMarker = (location: MapLocation, color: string, index: number, isFirst: boolean) => {
+    if (!map.current) return;
+    
+    // Create a marker element
+    const el = document.createElement('div');
+    el.className = 'custom-marker';
+    el.style.backgroundColor = location.type === 'pickup' ? '#3b82f6' : color;
+    el.style.width = '20px';
+    el.style.height = '20px';
+    el.style.borderRadius = '50%';
+    el.style.border = '2px solid white';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
+    el.style.color = 'white';
+    el.style.fontWeight = 'bold';
+    el.style.fontSize = '12px';
+    
+    // Add number to marker
+    el.textContent = `${index + 1}`;
+    
+    // Create popup content
+    const popupContent = document.createElement('div');
+    popupContent.innerHTML = `
+      <div class="p-2">
+        <div class="font-medium text-sm">${location.driver}</div>
+        <div class="text-xs text-gray-600">${location.type === 'pickup' ? 'Pickup' : 'Dropoff'} (Stop #${index + 1})</div>
+        <div class="text-sm mt-1">${location.address}</div>
+        ${location.time ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">⏱</span> ${location.time}</div>` : ''}
+        ${location.tripNumber ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">🚚</span> Trip: ${location.tripNumber}</div>` : ''}
+        ${location.distance ? `<div class="flex items-center gap-1 text-gray-700 mt-1"><span class="text-xs">📏</span> Distance: ${location.distance} mi</div>` : ''}
+        <div class="text-xs text-gray-500 mt-1">Order ID: ${location.orderId}</div>
+      </div>
+    `;
+    
+    // Create popup
+    const popup = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: false,
+      maxWidth: '300px'
+    }).setDOMContent(popupContent);
+    
+    // Create and add the marker
+    const marker = new mapboxgl.Marker({
+      element: el,
+    })
+    .setLngLat([location.longitude, location.latitude])
+    .setPopup(popup)
+    .addTo(map.current);
+    
+    // Store the marker for later removal
+    markersRef.current.push(marker);
+  };
+  
+  // Clear all markers
+  const clearMarkers = () => {
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
   };
   
   // Function to clear existing route layers
@@ -577,7 +659,9 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
           type: location.type,
           address: location.address,
           driver: location.driver,
-          time: location.time
+          time: location.time,
+          tripNumber: location.tripNumber,
+          distance: location.distance
         },
         geometry: {
           type: 'Point',
@@ -749,13 +833,35 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
               <>
                 <Separator className="my-2" />
                 <div className="text-xs font-medium mb-1">Driver Routes</div>
-                <div className="grid grid-cols-1 gap-1 max-h-20 overflow-y-auto">
+                <div className="max-h-40 overflow-y-auto">
                   {driverRoutes.map((route, index) => (
-                    <div key={`${route.driver}-${route.date}-${index}`} className="flex items-center">
-                      <div className="w-3 h-1 mr-2" style={{ backgroundColor: route.color }}></div>
-                      <span className="text-xs truncate">{route.driver}</span>
+                    <div key={`${route.driver}-${route.date}-${index}`} className="flex items-center justify-between mb-1">
+                      <div className="flex items-center">
+                        <div className="w-3 h-1 mr-2" style={{ backgroundColor: route.color }}></div>
+                        <span className="text-xs truncate">{route.driver}</span>
+                      </div>
+                      <span className="text-xs font-medium">{route.stops.length} stops</span>
                     </div>
                   ))}
+                </div>
+                
+                <Separator className="my-2" />
+                <div className="text-xs font-medium mb-1">Trip Statistics</div>
+                <div className="max-h-40 overflow-y-auto">
+                  {driverRoutes.map((route, index) => (
+                    <div key={`stats-${route.driver}-${route.date}-${index}`} className="flex items-center justify-between mb-1">
+                      <span className="text-xs truncate">{route.driver}</span>
+                      <span className="text-xs font-medium">{route.totalDistance} mi</span>
+                    </div>
+                  ))}
+                  {driverRoutes.length > 1 && (
+                    <div className="flex items-center justify-between mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-xs font-medium">Total</span>
+                      <span className="text-xs font-medium">
+                        {driverRoutes.reduce((sum, route) => sum + route.totalDistance, 0).toFixed(1)} mi
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             )}
