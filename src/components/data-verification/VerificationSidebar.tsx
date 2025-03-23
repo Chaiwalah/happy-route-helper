@@ -22,36 +22,16 @@ export function VerificationSidebar({
   onOrderSelect,
   ordersWithTripNumberIssues
 }: VerificationSidebarProps) {
-  // Improved function to determine if an order has issues with its trip number
+  // Function to determine if an order has issues with its trip number
   const hasTripNumberIssue = (order: DeliveryOrder) => {
-    // Check if trip number is missing from missingFields array
-    const isMissingTripNumber = order.missingFields.includes('tripNumber');
-    
-    // Check if trip number is null, undefined, empty string or 'N/A'
-    const isEmptyOrNA = !order.tripNumber || 
-                         order.tripNumber.trim() === '' || 
-                         order.tripNumber.trim().toLowerCase() === 'n/a';
-    
-    // Log the trip number status for debugging
-    console.log(`Trip number check for ${order.id}: value="${order.tripNumber || 'undefined'}", isMissing=${isMissingTripNumber}, isEmpty=${isEmptyOrNA}`);
-    
-    return isMissingTripNumber || isEmptyOrNA;
+    // Check if trip number is in missingFields array
+    return order.missingFields.includes('tripNumber');
   };
   
-  // Improved function to determine if an order has issues with its driver assignment
+  // Function to determine if an order has issues with its driver assignment
   const hasDriverIssue = (order: DeliveryOrder) => {
-    // Check if driver is missing from missingFields array
-    const isMissingDriver = order.missingFields.includes('driver');
-    
-    // Check if driver is null, undefined, empty string or 'Unassigned'
-    const isEmptyOrUnassigned = !order.driver || 
-                                order.driver.trim() === '' || 
-                                order.driver.trim() === 'Unassigned';
-    
-    // Log the driver status for debugging
-    console.log(`Driver check for ${order.id}: value="${order.driver || 'undefined'}", isMissing=${isMissingDriver}, isEmpty=${isEmptyOrUnassigned}`);
-    
-    return isMissingDriver || isEmptyOrUnassigned;
+    // Check if driver is in missingFields array
+    return order.missingFields.includes('driver');
   };
 
   return (
@@ -84,14 +64,6 @@ export function VerificationSidebar({
         <ScrollArea className="h-[400px] pr-4">
           <div className="space-y-2">
             {ordersRequiringVerification.map((order) => {
-              // Debug info
-              console.log(`Rendering order ${order.id} in sidebar:`, {
-                tripNumber: order.tripNumber || 'missing',
-                driver: order.driver || 'missing',
-                hasTripIssue: hasTripNumberIssue(order),
-                hasDriverIssue: hasDriverIssue(order)
-              });
-              
               return (
                 <div
                   key={order.id}
@@ -135,7 +107,7 @@ export function VerificationSidebar({
                     </div>
                     <div className="flex items-center justify-between mt-1 text-xs">
                       <div>
-                        {order.tripNumber && order.tripNumber.trim() !== '' && order.tripNumber.toLowerCase() !== 'n/a' ? (
+                        {order.tripNumber && order.tripNumber.trim() !== '' ? (
                           <span className="font-mono">{order.tripNumber}</span>
                         ) : (
                           <span className="italic text-amber-500">Missing Trip Number</span>

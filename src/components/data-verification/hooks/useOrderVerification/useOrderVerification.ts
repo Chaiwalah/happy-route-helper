@@ -4,8 +4,6 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { 
   OrderVerificationState, 
   EditingField, 
-  FieldUpdate,
-  OrderFieldValue,
   FieldValidationStatus
 } from './types';
 import { 
@@ -61,25 +59,9 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     }));
   }, [initialOrders]);
   
-  // Memoize order validation statuses for performance
-  const orderValidationStatuses = useMemo(() => {
-    startPerformanceTracking('useOrderVerification.orderValidationStatuses');
-    const statuses = state.orders.reduce((acc: { [orderId: string]: 'valid' | 'warning' | 'error' }, order) => {
-      acc[order.id] = getOrderValidationStatus(order);
-      return acc;
-    }, {});
-    endPerformanceTracking('useOrderVerification.orderValidationStatuses', {
-      orderCount: state.orders.length
-    });
-    return statuses;
-  }, [state.orders]);
-  
   // Memoize the allOrdersValid flag
   const allOrdersValid = useMemo(() => {
-    startPerformanceTracking('useOrderVerification.allOrdersValid');
-    const isValid = state.ordersWithIssues.length === 0;
-    endPerformanceTracking('useOrderVerification.allOrdersValid', { isValid });
-    return isValid;
+    return state.ordersWithIssues.length === 0;
   }, [state.ordersWithIssues]);
   
   // Find the selected order object for use in UI
@@ -112,7 +94,6 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
   
   // Handler to start editing a specific field
   const startEdit = useCallback((field: EditingField) => {
-    startPerformanceTracking('useOrderVerification.startEdit', { field });
     setState(prevState => {
       const selectedOrder = prevState.orders.find(order => order.id === prevState.selectedOrderId);
       const fieldValue = selectedOrder ? String(selectedOrder[field] || '') : '';
@@ -125,24 +106,20 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
         isModified: false
       };
     });
-    endPerformanceTracking('useOrderVerification.startEdit', { success: true });
   }, []);
   
   // Handler to update the field value while editing
   const updateFieldValue = useCallback((value: string) => {
-    startPerformanceTracking('useOrderVerification.updateFieldValue', { value });
     setState(prevState => ({
       ...prevState,
       fieldValue: value,
       isModified: true,
       validationMessage: null
     }));
-    endPerformanceTracking('useOrderVerification.updateFieldValue', { success: true });
   }, []);
   
   // Handler to cancel editing
   const cancelEdit = useCallback(() => {
-    startPerformanceTracking('useOrderVerification.cancelEdit');
     setState(prevState => ({
       ...prevState,
       editingField: 'NONE',
@@ -150,22 +127,15 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
       validationMessage: null,
       isModified: false
     }));
-    endPerformanceTracking('useOrderVerification.cancelEdit', { success: true });
   }, []);
   
   // Handler to save the edited field value
   const saveFieldValue = useCallback(async () => {
-    startPerformanceTracking('useOrderVerification.saveFieldValue');
-    
     if (!state.selectedOrderId) {
-      logError('No order selected for saving');
-      endPerformanceTracking('useOrderVerification.saveFieldValue', { success: false, reason: 'no order selected' });
       return;
     }
     
     if (state.editingField === 'NONE') {
-      logError('No field is being edited');
-      endPerformanceTracking('useOrderVerification.saveFieldValue', { success: false, reason: 'no field being edited' });
       return;
     }
     
@@ -179,12 +149,6 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     const isValid = validateField(state.editingField, state.fieldValue, setValidationMessage);
     
     if (!isValid) {
-      logInfo('Field validation failed', { 
-        field: state.editingField, 
-        value: state.fieldValue, 
-        message: state.validationMessage 
-      });
-      endPerformanceTracking('useOrderVerification.saveFieldValue', { success: false, reason: 'field validation failed' });
       return;
     }
     
@@ -249,8 +213,6 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
         isProcessing: false
       }));
     }
-    
-    endPerformanceTracking('useOrderVerification.saveFieldValue', { success: true });
   }, [state, onOrdersUpdated, toast]);
   
   // Function to get validation status for a field
@@ -282,17 +244,6 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     });
   }, [state.orders, onOrdersUpdated, toast]);
   
-  // Add isSavingField as a derived state
-  const isSavingField = state.isProcessing;
-  
-  // Ensure we're using the correct adapter methods for validation
-  const dependencies = {
-    getOrderValidationStatus,
-    getFieldValidationStatus: getFieldValidationStatusAdapter,
-    validateField,
-    getFieldStatus
-  };
-  
   return {
     ...state,
     selectedOrder,
@@ -303,12 +254,11 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     cancelEdit,
     saveFieldValue,
     allOrdersValid,
-    dependencies,
     handleFieldEdit,
     handleFieldValueChange,
     handleFieldUpdate,
     handleOrdersApprove,
     getFieldValidationStatus,
-    isSavingField
+    isSavingField: state.isProcessing
   };
 };

@@ -62,10 +62,10 @@ export function DataVerification({
 
   // Convert ordersWithIssues (string[]) to an array of DeliveryOrder objects
   const ordersWithIssuesObjects = React.useMemo(() => {
-    const result = initializedOrders.filter(order => ordersWithIssues.includes(order.id));
+    const result = processedOrders.filter(order => ordersWithIssues.includes(order.id));
     console.log('Orders with issues objects:', result.length);
     return result;
-  }, [initializedOrders, ordersWithIssues]);
+  }, [processedOrders, ordersWithIssues]);
 
   // Auto-select the first order with issues if none is selected
   useEffect(() => {
@@ -97,7 +97,7 @@ export function DataVerification({
             <div className="w-full md:w-1/3 border-r p-4 overflow-auto max-h-[60vh] md:max-h-full">
               <VerificationSidebar
                 ordersRequiringVerification={ordersWithIssuesObjects}
-                verifiedOrders={initializedOrders}
+                verifiedOrders={processedOrders}
                 selectedOrderId={selectedOrderId}
                 onOrderSelect={setSelectedOrderId}
                 ordersWithTripNumberIssues={ordersWithIssuesObjects}
@@ -151,7 +151,7 @@ export function DataVerification({
       <div className="w-full md:w-1/3 border-r p-4 overflow-auto h-[300px] md:h-full">
         <VerificationSidebar
           ordersRequiringVerification={ordersWithIssuesObjects}
-          verifiedOrders={initializedOrders}
+          verifiedOrders={processedOrders}
           selectedOrderId={selectedOrderId}
           onOrderSelect={setSelectedOrderId}
           ordersWithTripNumberIssues={ordersWithIssuesObjects}
