@@ -29,6 +29,7 @@ export type DeliveryOrder = {
   orderType?: string;            // Type of order (e.g. "PUMP_ONLY", "DELIVERY")
   isPumpPickup?: boolean;        // Flag to identify pump pickup orders
   isNoise?: boolean;             // Flag to identify orders with noise/test trip numbers
+  date?: string;                 // Date of the order
 };
 
 /**
@@ -102,6 +103,9 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
     ),
     tripNumber: headers.some(header => 
       ['trip number', 'trip #', 'tripnumber', 'trip', 'route number', 'route #', 'route'].includes(header.toLowerCase())
+    ),
+    date: headers.some(header =>
+      ['date', 'order date', 'delivery date'].includes(header.toLowerCase())
     )
   };
   endPerformanceTracking('parseCSV.identifyColumns');
@@ -357,6 +361,16 @@ export const parseCSV = (content: string): DeliveryOrder[] => {
           { source: 'extractDriverName', isValid: false, reason: 'Missing despite column existing' }
         );
       }
+
+      // Date extraction
+      if (columnsExist.date) {
+        const dateValue = rawRow["Date"] || rawRow["Order Date"] || rawRow["Delivery Date"] || "";
+        if (dateValue) {
+          order.date = dateValue;
+        } else {
+          missingFields.push('date');
+        }
+      }
       
       // Set the missing fields in the order
       order.missingFields = missingFields;
@@ -610,6 +624,9 @@ const mapHeaderToProperty = (header: string): keyof DeliveryOrder | null => {
     'route number': 'tripNumber',
     'route #': 'tripNumber',
     'route': 'tripNumber',
+    'date': 'date',
+    'order date': 'date',
+    'delivery date': 'date',
   };
   
   const normalizedHeader = header.toLowerCase().trim();

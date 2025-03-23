@@ -111,7 +111,7 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
                     driver: order.driver || 'Unassigned',
                     latitude: coords[1],
                     longitude: coords[0],
-                    time: order.actualPickupTime || order.scheduledPickupTime,
+                    time: order.actualPickupTime || order.exReadyTime,
                     coordinates: coords
                   });
                 }
@@ -131,7 +131,7 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
                     driver: order.driver || 'Unassigned',
                     latitude: coords[1],
                     longitude: coords[0],
-                    time: order.actualDeliveryTime || order.scheduledDeliveryTime,
+                    time: order.actualDeliveryTime || order.exDeliveryTime,
                     coordinates: coords
                   });
                 }
@@ -414,10 +414,13 @@ const OrderMap = ({ orders, showRoutes = false, selectedDriver = null, selectedD
       
       // Get date from the order
       const orderWithDate = orders.find(order => order.id === location.orderId);
-      if (!orderWithDate || !orderWithDate.date) return;
+      const orderDate = orderWithDate?.date || 
+                        (orderWithDate?.exReadyTime ? orderWithDate.exReadyTime.split('T')[0] : null);
+      
+      if (!orderDate) return;
       
       // Use just the date part
-      const date = orderWithDate.date.split('T')[0];
+      const date = orderDate.split('T')[0];
       
       // Skip if filtered by date and doesn't match
       if (selectedDate && date !== selectedDate) return;

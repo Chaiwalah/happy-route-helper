@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -40,9 +39,17 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
   const dates = useMemo(() => {
     const dateSet = new Set<string>();
     orders.forEach(order => {
-      if (order.date) {
-        // Extract just the date part if it's a datetime string
-        const dateStr = order.date.split('T')[0];
+      // Try to get date from either the date field or exReadyTime/exDeliveryTime
+      let dateStr = order.date ? order.date.split('T')[0] : null;
+      
+      // If no explicit date, try to extract from time fields
+      if (!dateStr && order.exReadyTime) {
+        dateStr = order.exReadyTime.split('T')[0];
+      } else if (!dateStr && order.exDeliveryTime) {
+        dateStr = order.exDeliveryTime.split('T')[0];
+      }
+      
+      if (dateStr) {
         dateSet.add(dateStr);
       }
     });
@@ -66,8 +73,13 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
     if (selectedDate) {
       const dateString = format(selectedDate, 'yyyy-MM-dd');
       filteredOrders = filteredOrders.filter(order => {
-        if (!order.date) return false;
-        return order.date.startsWith(dateString);
+        // Check all possible date fields
+        const orderDate = order.date || 
+                         (order.exReadyTime ? order.exReadyTime.split('T')[0] : null) ||
+                         (order.exDeliveryTime ? order.exDeliveryTime.split('T')[0] : null);
+        
+        if (!orderDate) return false;
+        return orderDate.startsWith(dateString);
       });
     }
     
