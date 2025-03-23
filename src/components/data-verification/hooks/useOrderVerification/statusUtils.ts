@@ -23,7 +23,7 @@ export const getFieldValidationStatus = (
     return 'warning';
   }
   
-  return 'success';
+  return 'valid'; // Changed from 'success' to 'valid' to match FieldValidationStatus type
 };
 
 // Get field status including both validation state and message
@@ -48,5 +48,34 @@ export const getFieldStatus = (
   };
 };
 
-// Alias for backward compatibility
-export const getOrderValidationStatus = getFieldValidationStatus;
+// Create adapter functions for compatibility with different function signatures
+export const getOrderValidationStatus = (order: DeliveryOrder): FieldValidationStatus => {
+  // Implementation depends on your specific validation logic for orders
+  // This is a stub that needs to be implemented based on your requirements
+  if (!order) return 'error';
+  
+  // Example implementation: Check for missing required fields
+  const missingRequiredFields = ['tripNumber', 'driver'].some(field => {
+    const value = order[field as keyof DeliveryOrder];
+    return value === null || value === undefined || String(value).trim() === '';
+  });
+  
+  if (missingRequiredFields) return 'error';
+  
+  // Check for warnings (fields that need verification)
+  const hasWarningFields = (order.missingFields || []).length > 0;
+  if (hasWarningFields) return 'warning';
+  
+  return 'valid';
+};
+
+// Adapter for the field validation with different parameter count
+export const getFieldValidationStatusAdapter = (
+  fieldName: string, 
+  value: string | null
+): FieldValidationStatus => {
+  if (value === null) return 'error';
+  // We're using an empty array here as a default value for missing fields
+  // In actual implementation, you might want to pass real missing fields from the context
+  return getFieldValidationStatus(fieldName, value, []);
+};

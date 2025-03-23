@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useCallback } from 'react';
@@ -8,7 +7,7 @@ import { UseOrderVerificationProps, UseOrderVerificationReturn } from './types';
 import { logDebug } from './logUtils';
 import { processOrdersForVerification } from './orderProcessing';
 import { updateOrder, approveOrders } from './orderUpdates';
-import { getOrderValidationStatus, getFieldValidationStatus } from './statusUtils';
+import { getOrderValidationStatus, getFieldValidationStatusAdapter } from './statusUtils';
 import { validateField } from './validationUtils';
 import {
   startPerformanceTracking,
@@ -201,7 +200,7 @@ export const useOrderVerification = ({
     handleFieldUpdate,
     handleOrdersApprove,
     getOrderValidationStatus,
-    getFieldValidationStatus,
+    getFieldValidationStatus: getFieldValidationStatusAdapter,
     updateOrder: async (orderId: string, fieldName: string, value: string) => {
       startPerformanceTracking(`useOrderVerification.updateOrder.${orderId}.${fieldName}`, { valueLength: value?.length });
       

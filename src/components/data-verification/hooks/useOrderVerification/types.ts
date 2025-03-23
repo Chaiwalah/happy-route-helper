@@ -16,7 +16,15 @@ export interface UseOrderVerificationProps {
 /**
  * Possible validation statuses for a field
  */
-export type FieldValidationStatus = 'valid' | 'warning' | 'error';
+export type FieldValidationStatus = 'valid' | 'warning' | 'error' | 'success';
+
+/**
+ * Field status including validation state and message
+ */
+export interface FieldStatus {
+  status: FieldValidationStatus;
+  message: string;
+}
 
 /**
  * Return type for useOrderVerification hook
