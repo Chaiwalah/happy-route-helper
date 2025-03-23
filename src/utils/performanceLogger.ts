@@ -1,4 +1,3 @@
-
 /**
  * Performance and Debug Logger - Optimized Version
  * Minimizes performance impact while providing comprehensive logging
@@ -365,4 +364,3 @@ export const endBatchLogging = () =>
   performanceLogger.endBatchOperation();
 
 // Debug mode control
-const DEBUG_MODE = false; // Set to false in production for better performance
