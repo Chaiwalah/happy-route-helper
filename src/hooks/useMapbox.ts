@@ -230,6 +230,54 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
     }
   }, []);
 
+  // Geocode addresses
+  const geocodeAddresses = useCallback(() => {
+    if (!map.current || !isMapInitialized || orders.length === 0) {
+      console.log('Cannot geocode addresses: map not ready or no orders');
+      return;
+    }
+    
+    console.log('Starting geocoding for', orders.length, 'orders');
+    setIsLoading(true);
+    
+    // Count orders with missing addresses
+    const missingCount = orders.filter(order => order.missingAddress === true).length;
+    setMissingAddressCount(missingCount);
+    
+    // Filter orders with valid addresses
+    const validOrders = orders.filter(order => order.missingAddress !== true);
+    
+    processBatch(
+      validOrders,
+      (locations) => {
+        console.log('Geocoded', locations.length, 'locations');
+        setMapLocations(locations);
+        updateMapMarkers(locations);
+        
+        if (showRoutes) {
+          createDriverRoutes(locations);
+        }
+        
+        setIsLoading(false);
+        
+        if (missingCount > 0) {
+          const validCount = orders.length - missingCount;
+          toast({
+            description: `Geocoded locations for ${validCount} orders. ${missingCount} order${missingCount !== 1 ? 's' : ''} had missing address data.`,
+            variant: "warning",
+          });
+        } else {
+          toast({
+            description: `Geocoded locations for all ${orders.length} orders`,
+          });
+        }
+      },
+      (processed, total) => {
+        console.log(`Geocoding progress: ${processed}/${total}`);
+      }
+    );
+  }, [orders, showRoutes, isMapInitialized, updateMapMarkers, createDriverRoutes]);
+
   // Create and display driver routes
   const createDriverRoutes = useCallback((locations: MapLocation[]) => {
     if (!map.current || locations.length === 0) return;
@@ -343,125 +391,6 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
       });
     }
   }, [orders, selectedDriver, selectedDate, clearMarkers, clearRouteLayers, drawRoute, addMarker]);
-
-  // Geocode addresses
-  const geocodeAddresses = useCallback(() => {
-    if (!map.current || !isMapInitialized || orders.length === 0) {
-      console.log('Cannot geocode addresses: map not ready or no orders');
-      return;
-    }
-    
-    console.log('Starting geocoding for', orders.length, 'orders');
-    setIsLoading(true);
-    
-    // Count orders with missing addresses
-    const missingCount = orders.filter(order => order.missingAddress === true).length;
-    setMissingAddressCount(missingCount);
-    
-    // Filter orders with valid addresses
-    const validOrders = orders.filter(order => order.missingAddress !== true);
-    
-    processBatch(
-      validOrders,
-      (locations) => {
-        console.log('Geocoded', locations.length, 'locations');
-        setMapLocations(locations);
-        updateMapMarkers(locations);
-        
-        if (showRoutes) {
-          createDriverRoutes(locations);
-        }
-        
-        setIsLoading(false);
-        
-        if (missingCount > 0) {
-          const validCount = orders.length - missingCount;
-          toast({
-            description: `Geocoded locations for ${validCount} orders. ${missingCount} order${missingCount !== 1 ? 's' : ''} had missing address data.`,
-            variant: "warning",
-          });
-        } else {
-          toast({
-            description: `Geocoded locations for all ${orders.length} orders`,
-          });
-        }
-      },
-      (processed, total) => {
-        console.log(`Geocoding progress: ${processed}/${total}`);
-      }
-    );
-  }, [orders, showRoutes, isMapInitialized, updateMapMarkers, createDriverRoutes]);
-
-  // Process batches to avoid UI freezing
-  const processBatch = async (
-    batch: DeliveryOrder[], 
-    onResult: (locations: MapLocation[]) => void,
-    onProgress: (processed: number, total: number) => void
-  ) => {
-    const batchLocations: MapLocation[] = [];
-    const batchSize = 5; // Process 5 orders at a time
-    
-    for (let i = 0; i < batch.length; i += batchSize) {
-      const currentBatch = batch.slice(i, i + batchSize);
-      const batchPromises: Promise<void>[] = [];
-      
-      for (const order of currentBatch) {
-        if (order.missingAddress !== true) {
-          if (order.pickup) {
-            batchPromises.push(
-              geocodeAddress(order.pickup).then(coords => {
-                if (coords) {
-                  batchLocations.push({
-                    id: `pickup-${order.id || 'unknown'}`,
-                    orderId: order.id || 'unknown',
-                    type: 'pickup',
-                    address: order.pickup,
-                    driver: order.driver || 'Unassigned',
-                    latitude: coords[1],
-                    longitude: coords[0],
-                    time: order.actualPickupTime || order.exReadyTime,
-                    coordinates: coords,
-                    tripNumber: order.tripNumber,
-                    distance: order.estimatedDistance
-                  });
-                }
-              })
-            );
-          }
-          
-          if (order.dropoff) {
-            batchPromises.push(
-              geocodeAddress(order.dropoff).then(coords => {
-                if (coords) {
-                  batchLocations.push({
-                    id: `dropoff-${order.id || 'unknown'}`,
-                    orderId: order.id || 'unknown',
-                    type: 'dropoff',
-                    address: order.dropoff,
-                    driver: order.driver || 'Unassigned',
-                    latitude: coords[1],
-                    longitude: coords[0],
-                    time: order.actualDeliveryTime || order.exDeliveryTime,
-                    coordinates: coords,
-                    tripNumber: order.tripNumber,
-                    distance: order.estimatedDistance
-                  });
-                }
-              })
-            );
-          }
-        }
-      }
-      
-      await Promise.all(batchPromises);
-      onProgress(Math.min(i + batchSize, batch.length), batch.length);
-      
-      // Allow UI to update between batches
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    
-    onResult(batchLocations);
-  };
 
   // Initialize map
   const initializeMap = useCallback(() => {
