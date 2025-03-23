@@ -5,7 +5,8 @@ import {
   OrderVerificationState, 
   EditingField, 
   FieldUpdate,
-  OrderFieldValue
+  OrderFieldValue,
+  FieldValidationStatus
 } from './types';
 import { 
   getOrderValidationStatus,
@@ -73,6 +74,11 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     return isValid;
   }, [state.orders, orderValidationStatuses]);
   
+  // Find the selected order object for use in UI
+  const selectedOrder = useMemo(() => {
+    return state.selectedOrderId ? state.orders.find(order => order.id === state.selectedOrderId) : null;
+  }, [state.selectedOrderId, state.orders]);
+
   // Handler to select an order for editing
   const selectOrder = useCallback((orderId: string) => {
     startPerformanceTracking('useOrderVerification.selectOrder', { orderId });
@@ -90,6 +96,11 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     }
     endPerformanceTracking('useOrderVerification.selectOrder', { success: !!selectedOrder });
   }, [state.orders]);
+  
+  // Helper function to set selected order ID
+  const setSelectedOrderId = useCallback((orderId: string) => {
+    selectOrder(orderId);
+  }, [selectOrder]);
   
   // Handler to start editing a specific field
   const startEdit = useCallback((field: EditingField) => {
@@ -201,6 +212,42 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
     endPerformanceTracking('useOrderVerification.saveFieldValue', { success: true });
   }, [state.selectedOrderId, state.editingField, state.fieldValue, state.orders, onOrdersUpdated, toast]);
   
+  // Function to get validation status for a field
+  const getFieldValidationStatus = useCallback((fieldName: string, value: string | null): FieldValidationStatus => {
+    return getFieldValidationStatusAdapter(fieldName, value);
+  }, []);
+  
+  // Handle field edit - adapter for the DataVerification component
+  const handleFieldEdit = useCallback((field: string, value: string) => {
+    startEdit(field as EditingField);
+  }, [startEdit]);
+  
+  // Handle field value change - adapter for the DataVerification component
+  const handleFieldValueChange = useCallback((value: string) => {
+    updateFieldValue(value);
+  }, [updateFieldValue]);
+  
+  // Handle field update - adapter for the DataVerification component
+  const handleFieldUpdate = useCallback(() => {
+    saveFieldValue();
+  }, [saveFieldValue]);
+  
+  // Function to mark all orders as verified and approved
+  const handleOrdersApprove = useCallback(() => {
+    onOrdersUpdated(state.orders);
+    toast({
+      title: "Changes applied",
+      description: `Successfully updated all orders`,
+    });
+  }, [state.orders, onOrdersUpdated, toast]);
+  
+  // Mock suggestedTripNumbers and suggestedDrivers for now
+  const suggestedTripNumbers = useMemo(() => ['TR-001', 'TR-002', 'TR-003'], []);
+  const suggestedDrivers = useMemo(() => ['John Doe', 'Jane Smith', 'Alex Johnson'], []);
+  
+  // Add isSavingField as a derived state
+  const isSavingField = state.isProcessing;
+  
   // Ensure we're using the correct adapter methods for validation
   const dependencies = {
     getOrderValidationStatus,
@@ -211,13 +258,24 @@ export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrde
   
   return {
     ...state,
+    selectedOrder,
     selectOrder,
+    setSelectedOrderId,
     startEdit,
     updateFieldValue,
     cancelEdit,
     saveFieldValue,
     ordersWithIssues,
     allOrdersValid,
-    dependencies
+    dependencies,
+    // Add the missing properties that DataVerification expects
+    handleFieldEdit,
+    handleFieldValueChange,
+    handleFieldUpdate,
+    handleOrdersApprove,
+    getFieldValidationStatus,
+    isSavingField,
+    suggestedTripNumbers,
+    suggestedDrivers
   };
 };

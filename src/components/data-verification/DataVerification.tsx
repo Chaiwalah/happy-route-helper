@@ -1,3 +1,4 @@
+
 "use client"
 
 import React from 'react';
@@ -54,9 +55,14 @@ export function DataVerification({
     handleOrdersApprove,
     getFieldValidationStatus
   } = useOrderVerification({ 
-    orders: initializedOrders, 
-    onOrdersVerified 
+    initialOrders: initializedOrders, 
+    onOrdersUpdated: onOrdersVerified 
   });
+
+  // Convert ordersWithIssues (string[]) to an array of DeliveryOrder objects
+  const ordersWithIssuesObjects = React.useMemo(() => {
+    return initializedOrders.filter(order => ordersWithIssues.includes(order.id));
+  }, [initializedOrders, ordersWithIssues]);
 
   // Add some console logging to check what's happening
   console.log('[DataVerification] Orders with issues:', ordersWithIssues);
@@ -76,11 +82,11 @@ export function DataVerification({
           <div className="flex h-full flex-col md:flex-row">
             <div className="w-full md:w-1/3 border-r p-4 overflow-auto max-h-[60vh] md:max-h-full">
               <VerificationSidebar
-                ordersRequiringVerification={ordersWithIssues}
+                ordersRequiringVerification={ordersWithIssuesObjects}
                 verifiedOrders={initializedOrders}
                 selectedOrderId={selectedOrderId}
                 onOrderSelect={setSelectedOrderId}
-                ordersWithTripNumberIssues={ordersWithIssues}
+                ordersWithTripNumberIssues={ordersWithIssuesObjects}
               />
             </div>
             <div className="w-full md:w-2/3 p-4 overflow-auto max-h-[60vh] md:max-h-full">
@@ -92,7 +98,7 @@ export function DataVerification({
                   onFieldEdit={handleFieldEdit}
                   onFieldValueChange={handleFieldValueChange}
                   onFieldUpdate={handleFieldUpdate}
-                  ordersWithTripNumberIssues={ordersWithIssues}
+                  ordersWithTripNumberIssues={ordersWithIssuesObjects}
                   isSavingField={isSavingField}
                   validationMessage={validationMessage}
                   suggestedTripNumbers={suggestedTripNumbers}
@@ -120,11 +126,11 @@ export function DataVerification({
     <div className="flex flex-col md:flex-row h-full border rounded-lg">
       <div className="w-full md:w-1/3 border-r p-4 overflow-auto h-[300px] md:h-full">
         <VerificationSidebar
-          ordersRequiringVerification={ordersWithIssues}
+          ordersRequiringVerification={ordersWithIssuesObjects}
           verifiedOrders={initializedOrders}
           selectedOrderId={selectedOrderId}
           onOrderSelect={setSelectedOrderId}
-          ordersWithTripNumberIssues={ordersWithIssues}
+          ordersWithTripNumberIssues={ordersWithIssuesObjects}
         />
       </div>
       <div className="w-full md:w-2/3 p-4 overflow-auto h-[400px] md:h-full">
@@ -136,7 +142,7 @@ export function DataVerification({
             onFieldEdit={handleFieldEdit}
             onFieldValueChange={handleFieldValueChange}
             onFieldUpdate={handleFieldUpdate}
-            ordersWithTripNumberIssues={ordersWithIssues}
+            ordersWithTripNumberIssues={ordersWithIssuesObjects}
             isSavingField={isSavingField}
             validationMessage={validationMessage}
             suggestedTripNumbers={suggestedTripNumbers}
