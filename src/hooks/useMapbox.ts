@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { debounce } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { DeliveryOrder } from '@/utils/csvParser';
-import { geocodeAddress, getDriverColor, Coordinates } from '@/utils/mapboxService';
+import { geocodeAddress, getDriverColor, Coordinates, getMapboxToken } from '@/utils/mapboxService';
 
 export interface MapLocation {
   id: string;
@@ -37,9 +37,7 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
   
   // State
   const [mapLocations, setMapLocations] = useState<MapLocation[]>([]);
-  const [mapboxToken, setMapboxToken] = useState<string>(
-    localStorage.getItem('mapbox_token') || ''
-  );
+  const [mapboxToken] = useState<string>(getMapboxToken());
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [missingAddressCount, setMissingAddressCount] = useState(0);
@@ -705,31 +703,87 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
       setMapLoadError(true);
       toast({
         title: "Error initializing map",
-        description: "Please check your Mapbox token and try again",
+        description: "There was a problem loading the map. Please try again later.",
         variant: "destructive",
       });
     }
   }, [mapboxToken, orders, geocodeAddresses]);
 
-  // Debounced token save to prevent excessive reinitialization
-  const handleTokenSave = useCallback(debounce(() => {
-    if (mapboxToken) {
-      console.log('Saving token and initializing map');
-      localStorage.setItem('mapbox_token', mapboxToken);
-      initializeMap();
-    } else {
-      toast({
-        title: "Mapbox token required",
-        description: "Please enter a valid Mapbox token",
-        variant: "destructive",
-      });
+  // Process batches to avoid UI freezing
+  const processBatch = async (
+    batch: DeliveryOrder[], 
+    onResult: (locations: MapLocation[]) => void,
+    onProgress: (processed: number, total: number) => void
+  ) => {
+    const batchLocations: MapLocation[] = [];
+    const batchSize = 5; // Process 5 orders at a time
+    
+    for (let i = 0; i < batch.length; i += batchSize) {
+      const currentBatch = batch.slice(i, i + batchSize);
+      const batchPromises: Promise<void>[] = [];
+      
+      for (const order of currentBatch) {
+        if (order.missingAddress !== true) {
+          if (order.pickup) {
+            batchPromises.push(
+              geocodeAddress(order.pickup).then(coords => {
+                if (coords) {
+                  batchLocations.push({
+                    id: `pickup-${order.id || 'unknown'}`,
+                    orderId: order.id || 'unknown',
+                    type: 'pickup',
+                    address: order.pickup,
+                    driver: order.driver || 'Unassigned',
+                    latitude: coords[1],
+                    longitude: coords[0],
+                    time: order.actualPickupTime || order.exReadyTime,
+                    coordinates: coords,
+                    tripNumber: order.tripNumber,
+                    distance: order.estimatedDistance
+                  });
+                }
+              })
+            );
+          }
+          
+          if (order.dropoff) {
+            batchPromises.push(
+              geocodeAddress(order.dropoff).then(coords => {
+                if (coords) {
+                  batchLocations.push({
+                    id: `dropoff-${order.id || 'unknown'}`,
+                    orderId: order.id || 'unknown',
+                    type: 'dropoff',
+                    address: order.dropoff,
+                    driver: order.driver || 'Unassigned',
+                    latitude: coords[1],
+                    longitude: coords[0],
+                    time: order.actualDeliveryTime || order.exDeliveryTime,
+                    coordinates: coords,
+                    tripNumber: order.tripNumber,
+                    distance: order.estimatedDistance
+                  });
+                }
+              })
+            );
+          }
+        }
+      }
+      
+      await Promise.all(batchPromises);
+      onProgress(Math.min(i + batchSize, batch.length), batch.length);
+      
+      // Allow UI to update between batches
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
-  }, 500), [mapboxToken, initializeMap]);
+    
+    onResult(batchLocations);
+  };
 
-  // Initialize map when token is available
+  // Initialize map on component mount
   useEffect(() => {
-    if (mapboxToken && !isMapInitialized && !mapLoadError) {
-      console.log('Initializing map on mount or token change');
+    if (!isMapInitialized && !mapLoadError) {
+      console.log('Initializing map on mount');
       initializeMap();
     }
     
@@ -745,7 +799,7 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
         popupRef.current = null;
       }
     };
-  }, [mapboxToken, initializeMap, isMapInitialized, mapLoadError]);
+  }, [initializeMap, isMapInitialized, mapLoadError]);
 
   // Update markers when orders change and map is initialized
   useEffect(() => {
@@ -758,13 +812,11 @@ export const useMapbox = (orders: DeliveryOrder[], showRoutes: boolean, selected
   return {
     mapContainer,
     mapboxToken,
-    setMapboxToken,
     isMapInitialized,
     isLoading,
     missingAddressCount,
     driverRoutes,
     mapLocations,
-    handleTokenSave,
     geocodeAddresses,
     mapLoadError
   };

@@ -6,7 +6,6 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
 import { MapPin, Info } from 'lucide-react';
 import { MapLegend } from '@/components/map/MapLegend';
-import { TokenInput } from '@/components/map/TokenInput';
 import { useMapbox } from '@/hooks/useMapbox';
 import { toast } from '@/components/ui/use-toast';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -26,37 +25,52 @@ const OrderMap: React.FC<OrderMapProps> = ({
 }) => {
   const {
     mapContainer,
-    mapboxToken,
-    setMapboxToken,
     isMapInitialized,
     isLoading,
     missingAddressCount,
     driverRoutes,
     mapLocations,
-    handleTokenSave,
     geocodeAddresses,
     mapLoadError
   } = useMapbox(orders, showRoutes, selectedDriver, selectedDate);
 
   // Try to reinitialize map if there was an error
   useEffect(() => {
-    if (mapLoadError && mapboxToken) {
+    if (mapLoadError) {
       toast({
         title: "Map failed to load",
-        description: "Please check your Mapbox token and try again",
+        description: "There was a problem loading the map. Please try again later.",
         variant: "destructive",
       });
     }
-  }, [mapLoadError, mapboxToken]);
+  }, [mapLoadError]);
 
-  // Render the token input if no token is available or if map failed to load
-  if (!mapboxToken || mapLoadError) {
+  // If map failed to load, show error message
+  if (mapLoadError) {
     return (
-      <TokenInput 
-        mapboxToken={mapboxToken} 
-        setMapboxToken={setMapboxToken} 
-        handleTokenSave={handleTokenSave} 
-      />
+      <div className="space-y-6 animate-fade-in">
+        <div className="space-y-2">
+          <h2 className="text-xl font-medium">Map Visualization</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Unable to load the map at this time
+          </p>
+        </div>
+        
+        <div className="rounded-lg border bg-card p-6 glass-card subtle-shadow space-y-4">
+          <div className="flex items-center text-destructive space-x-2 mb-4">
+            <Info size={20} />
+            <p className="text-sm">There was a problem loading the map</p>
+          </div>
+          
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Please try again later or contact support if the problem persists.
+          </p>
+          
+          <Button onClick={() => window.location.reload()} variant="outline">
+            Refresh Page
+          </Button>
+        </div>
+      </div>
     );
   }
 

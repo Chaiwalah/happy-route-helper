@@ -1,5 +1,5 @@
 // Mapbox service for geocoding and directions
-const MAPBOX_TOKEN = '';
+const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGVsaXZlcnlkYXNoYm9hcmQiLCJhIjoiY2x2eDI3OGEwMDAxaTJrcnVvNmtuMDZxMCJ9.cYhx0fJy-GZBgwoYEHYQ3g';
 
 // Coordinate type to ensure consistent usage
 export type Coordinates = [number, number]; // [longitude, latitude]
@@ -45,9 +45,9 @@ const processQueue = async () => {
   }
 };
 
-// Get the mapbox token (from localStorage)
+// Get the mapbox token (from built-in constant rather than localStorage)
 export const getMapboxToken = (): string => {
-  return localStorage.getItem('mapbox_token') || '';
+  return MAPBOX_TOKEN;
 };
 
 // Convert an address string to coordinates
