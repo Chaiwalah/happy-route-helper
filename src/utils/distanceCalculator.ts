@@ -141,6 +141,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
             
             // Fix: Use the coordinates as a tuple, not as a string
             if (pickupCoords) {
+              // Since TypeScript knows pickupCoords is not null here, we can safely pass it
               cacheAddress(order.pickup, pickupCoords);
             }
           } else {
@@ -158,6 +159,7 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
             
             // Fix: Use the coordinates as a tuple, not as a string
             if (dropoffCoords) {
+              // Since TypeScript knows dropoffCoords is not null here, we can safely pass it
               cacheAddress(order.dropoff, dropoffCoords);
             }
           } else {
@@ -291,7 +293,7 @@ async function geocodeWithTimeout(address: string): Promise<[number, number] | n
       return [result.longitude, result.latitude];
     }
     
-    return result;
+    return result as [number, number] | null;
   } catch (error) {
     logError(`Geocoding error for ${address}:`, error);
     return null;

@@ -44,7 +44,7 @@ const processQueue = async () => {
 };
 
 // Convert an address string to coordinates
-export const geocodeAddress = async (address: string): Promise<{longitude: number, latitude: number} | null> => {
+export const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
   if (!address || address.trim() === '') {
     console.warn('Empty address provided for geocoding');
     return null;
@@ -52,7 +52,11 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
   
   // Check cache first
   if (geocodingCache[address] !== undefined) {
-    return geocodingCache[address];
+    const cachedResult = geocodingCache[address];
+    if (cachedResult) {
+      return [cachedResult.longitude, cachedResult.latitude];
+    }
+    return null;
   }
   
   // Skip addresses that have repeatedly failed
@@ -86,7 +90,7 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
           
           // Cache the result
           geocodingCache[address] = coords;
-          resolve(coords);
+          resolve([coords.longitude, coords.latitude]);
         } else {
           console.warn(`No geocoding results for address: ${address}`);
           geocodingCache[address] = null;
@@ -119,34 +123,34 @@ export const geocodeAddress = async (address: string): Promise<{longitude: numbe
 };
 
 // Generate a cache key for routes
-const getRouteKey = (addresses: string[]): string => {
-  return addresses.join('|');
+const getRouteKey = (coordinates: [number, number][]): string => {
+  return coordinates.map(coord => coord.join(',')).join('|');
 };
 
 // Calculate route distance between multiple stops
-export const calculateRouteDistance = async (addresses: string[]): Promise<number | null> => {
-  if (!addresses || addresses.length < 2) {
-    console.warn('Need at least two addresses to calculate a route');
+export const calculateRouteDistance = async (coordinates: [number, number][]): Promise<number | null> => {
+  if (!coordinates || coordinates.length < 2) {
+    console.warn('Need at least two coordinates to calculate a route');
     return null;
   }
   
   // Generate a cache key for this route
-  const routeKey = getRouteKey(addresses);
+  const routeKey = getRouteKey(coordinates);
   
   // Check cache first
   if (routeDistanceCache[routeKey] !== undefined) {
     return routeDistanceCache[routeKey];
   }
   
-  // If this is a multi-stop route (more than 2 addresses), 
+  // If this is a multi-stop route (more than 2 coordinates), 
   // estimate the distance as a sum of pairs to avoid expensive API calls
-  if (addresses.length > 2) {
-    console.log(`Using distance estimation for ${addresses.length} addresses`);
+  if (coordinates.length > 2) {
+    console.log(`Using distance estimation for ${coordinates.length} coordinates`);
     try {
       let totalDistance = 0;
       // Calculate distances between consecutive pairs
-      for (let i = 0; i < addresses.length - 1; i++) {
-        const pairDistance = await calculateRouteDistance([addresses[i], addresses[i+1]]);
+      for (let i = 0; i < coordinates.length - 1; i++) {
+        const pairDistance = await calculateRouteDistance([coordinates[i], coordinates[i+1]]);
         if (pairDistance === null) {
           // If any segment fails, return null
           return null;
@@ -163,28 +167,15 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
     }
   }
   
-  console.log(`Calculating distance between ${addresses.length} addresses`);
+  console.log(`Calculating distance between ${coordinates.length} coordinates`);
   
   // Create a promise that will be resolved when this request is processed
   return new Promise((resolve) => {
     const performRequest = async () => {
       try {
-        // First geocode all addresses
-        const geocodingPromises = addresses.map(address => geocodeAddress(address));
-        const coordinates = await Promise.all(geocodingPromises);
-        
-        // Check if any geocoding failed
-        if (coordinates.some(coord => coord === null)) {
-          console.warn('One or more addresses could not be geocoded');
-          routeDistanceCache[routeKey] = null; // Cache the failure
-          resolve(null);
-          return;
-        }
-        
         // Format coordinates for Mapbox Directions API
         const coordsString = coordinates
-          .filter((coord): coord is {longitude: number, latitude: number} => coord !== null)
-          .map(coord => `${coord.longitude},${coord.latitude}`)
+          .map(coord => `${coord[0]},${coord[1]}`)
           .join(';');
         
         const response = await fetch(
@@ -206,7 +197,7 @@ export const calculateRouteDistance = async (addresses: string[]): Promise<numbe
           routeDistanceCache[routeKey] = distanceInMiles;
           resolve(distanceInMiles);
         } else {
-          console.warn('No route found between the provided addresses');
+          console.warn('No route found between the provided coordinates');
           routeDistanceCache[routeKey] = null;
           resolve(null);
         }
