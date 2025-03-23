@@ -288,12 +288,18 @@ async function geocodeWithTimeout(address: string): Promise<[number, number] | n
     ]);
     
     // Fix: Ensure we convert the result to the correct format if needed
-    if (result && 'longitude' in result && 'latitude' in result) {
+    if (result && Array.isArray(result) && result.length === 2) {
+      // It's already in the correct [lng, lat] tuple format
+      return result as [number, number];
+    } else if (result && typeof result === 'object' && 'longitude' in result && 'latitude' in result) {
       // Convert from {longitude, latitude} format to [lng, lat] tuple
-      return [result.longitude, result.latitude];
+      // Add explicit type assertion for each coordinate
+      const lng = Number(result.longitude);
+      const lat = Number(result.latitude);
+      return [lng, lat];
     }
     
-    return result as [number, number] | null;
+    return null;
   } catch (error) {
     logError(`Geocoding error for ${address}:`, error);
     return null;

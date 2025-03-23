@@ -1,13 +1,9 @@
-
 // Mapbox service for geocoding and directions
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiY2hhaXdhbGFoMTUiLCJhIjoiY204amttc2VwMHB5cTJrcHQ5bDNqMzNydyJ9.d7DXZyPhDbGUJMNt13tmTw';
 
 // Cache for geocoded addresses to avoid duplicate API calls
 type GeocodingCache = {
-  [address: string]: {
-    longitude: number;
-    latitude: number;
-  } | null;
+  [address: string]: [number, number] | null;
 };
 
 // Shared cache that persists during the session
@@ -52,11 +48,7 @@ export const geocodeAddress = async (address: string): Promise<[number, number] 
   
   // Check cache first
   if (geocodingCache[address] !== undefined) {
-    const cachedResult = geocodingCache[address];
-    if (cachedResult) {
-      return [cachedResult.longitude, cachedResult.latitude];
-    }
-    return null;
+    return geocodingCache[address];
   }
   
   // Skip addresses that have repeatedly failed
@@ -83,14 +75,15 @@ export const geocodeAddress = async (address: string): Promise<[number, number] 
         const data = await response.json();
         
         if (data.features && data.features.length > 0) {
-          const coords = {
-            longitude: data.features[0].center[0],
-            latitude: data.features[0].center[1]
-          };
+          // Create coordinates as a tuple [longitude, latitude]
+          const coords: [number, number] = [
+            data.features[0].center[0],
+            data.features[0].center[1]
+          ];
           
           // Cache the result
           geocodingCache[address] = coords;
-          resolve([coords.longitude, coords.latitude]);
+          resolve(coords);
         } else {
           console.warn(`No geocoding results for address: ${address}`);
           geocodingCache[address] = null;
@@ -152,7 +145,7 @@ export const calculateRouteDistance = async (coordinates: [number, number][]): P
       for (let i = 0; i < coordinates.length - 1; i++) {
         const pairDistance = await calculateRouteDistance([coordinates[i], coordinates[i+1]]);
         if (pairDistance === null) {
-          // If any segment fails, return null
+          // If any segment fails, return null;
           return null;
         }
         totalDistance += pairDistance;

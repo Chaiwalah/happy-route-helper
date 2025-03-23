@@ -1,11 +1,12 @@
-
 import { DeliveryOrder } from './csvParser';
-import { calculateRouteDistance } from './mapboxService';
+import { calculateRouteDistance, geocodeAddress } from './mapboxService';
 
 // Cache for route distance calculations
 const distanceCache: { [key: string]: number } = {};
 
-// Calculate the total route distance for multi-stop routes using Mapbox Directions API
+/**
+ * Calculate the total route distance for multi-stop routes using Mapbox Directions API
+ */
 export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder[]): Promise<number> => {
   // Generate a cache key based on order IDs
   const cacheKey = routeOrders.map(order => order.id).join('|');
@@ -38,11 +39,17 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     // Otherwise calculate the distance if we have both pickup and dropoff
     if (order.pickup && order.dropoff) {
       try {
-        const routeDistance = await calculateRouteDistance([order.pickup, order.dropoff]);
-        if (routeDistance !== null) {
-          const distance = Number(routeDistance.toFixed(1));
-          distanceCache[cacheKey] = distance;
-          return distance;
+        // First geocode both addresses to get coordinates
+        const pickupCoords = await geocodeAddress(order.pickup);
+        const dropoffCoords = await geocodeAddress(order.dropoff);
+        
+        if (pickupCoords && dropoffCoords) {
+          const routeDistance = await calculateRouteDistance([pickupCoords, dropoffCoords]);
+          if (routeDistance !== null) {
+            const distance = Number(routeDistance.toFixed(1));
+            distanceCache[cacheKey] = distance;
+            return distance;
+          }
         }
       } catch (error) {
         console.error('Error calculating individual route distance:', error);
@@ -94,6 +101,7 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
   
   // Otherwise, extract all addresses in order to calculate the full chain distance
   const addresses: string[] = [];
+  const coordinates: [number, number][] = [];
   
   // Start with the pickup of the first order (assuming all orders in a trip start from the same pharmacy)
   if (routeOrders[0].pickup) {
@@ -107,11 +115,19 @@ export const calculateMultiStopRouteDistance = async (routeOrders: DeliveryOrder
     }
   });
   
-  // Calculate the full route distance with all stops
-  if (addresses.length >= 2) {
+  // Geocode all addresses first
+  for (const address of addresses) {
+    const coords = await geocodeAddress(address);
+    if (coords) {
+      coordinates.push(coords);
+    }
+  }
+  
+  // Calculate the full route distance with all coordinates
+  if (coordinates.length >= 2) {
     try {
-      console.log(`Calculating multi-stop route with ${addresses.length} addresses`);
-      const routeDistance = await calculateRouteDistance(addresses);
+      console.log(`Calculating multi-stop route with ${coordinates.length} coordinates`);
+      const routeDistance = await calculateRouteDistance(coordinates);
       if (routeDistance !== null) {
         const distance = Number(routeDistance.toFixed(1));
         distanceCache[cacheKey] = distance;
