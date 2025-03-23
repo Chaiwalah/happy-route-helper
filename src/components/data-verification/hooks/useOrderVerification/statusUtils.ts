@@ -1,5 +1,5 @@
 
-import { FieldStatus, ValidationStatus } from './types';
+import { FieldStatus, FieldValidationStatus } from './types';
 
 // Function to process field values - make sure they're strings and handle empty/undefined values
 export const processFieldValue = (value: any): string => {
@@ -14,7 +14,7 @@ export const getFieldValidationStatus = (
   fieldName: string,
   value: string,
   missingFields: string[]
-): ValidationStatus => {
+): FieldValidationStatus => {
   if (!value || value.trim() === '') {
     return 'error';
   }
@@ -47,3 +47,6 @@ export const getFieldStatus = (
     message
   };
 };
+
+// Alias for backward compatibility
+export const getOrderValidationStatus = getFieldValidationStatus;

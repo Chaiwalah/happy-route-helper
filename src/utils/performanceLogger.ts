@@ -1,3 +1,4 @@
+
 /**
  * Performance and Debug Logger - Optimized Version
  * Minimizes performance impact while providing comprehensive logging
@@ -69,7 +70,8 @@ class PerformanceLogger {
     }
 
     const endTime = performance.now();
-    const entry = this.logEntries.findLast((e) => e.operation === operation && !e.endTime);
+    // Use find instead of findLast for broader compatibility
+    const entry = this.logEntries.find((e) => e.operation === operation && !e.endTime);
 
     if (entry) {
       entry.endTime = endTime;
@@ -91,7 +93,7 @@ class PerformanceLogger {
   }
 
   log(level: LogLevel, message: string, data?: any): void {
-    if (!DEBUG_MODE && level === 'debug') return;
+    if (level === 'debug' && !DEBUG_MODE) return;
 
     const logData = {
       timestamp: new Date().toISOString(),
@@ -166,6 +168,44 @@ class PerformanceLogger {
       this.log('warning', 'Batch operation ended without start.');
     }
   }
+
+  getPerformanceReport(): { totalTime: number, entries: PerformanceEntry[] } {
+    const totalTime = this.logEntries.reduce((sum, entry) => {
+      return sum + (entry.duration || 0);
+    }, 0);
+    return { totalTime, entries: [...this.logEntries] };
+  }
+
+  getBottlenecks(threshold: number = 100): PerformanceEntry[] {
+    return this.logEntries
+      .filter(entry => (entry.duration || 0) > threshold)
+      .sort((a, b) => (b.duration || 0) - (a.duration || 0));
+  }
+
+  clearLogs(): void {
+    this.logEntries = [];
+  }
+
+  cacheAddress(address: string, coordinates: [number, number]): void {
+    // Placeholder for caching functionality
+    this.log('debug', `Caching address: ${address}`);
+  }
+
+  getCachedAddress(address: string): [number, number] | undefined {
+    // Placeholder for cache retrieval
+    this.log('debug', `Getting cached address: ${address}`);
+    return undefined;
+  }
+
+  clearAddressCache(): void {
+    // Placeholder for clearing cache
+    this.log('debug', 'Clearing address cache');
+  }
+
+  getCacheStatus(): { size: number, hits: number, misses: number, hitRatio: number } {
+    // Placeholder for cache status
+    return { size: 0, hits: 0, misses: 0, hitRatio: 0 };
+  }
 }
 
 // Export a singleton instance
@@ -189,14 +229,66 @@ export const logMessage = (level: LogLevel, message: string, data?: any) => {
   performanceLogger.log(level, message, data);
 };
 
-// Get all log entries
-export const getLogEntries = () => {
-  return performanceLogger.getEntries();
+// Export all the helper functions that are being used in other files
+export const logDebug = (message: string, data?: any) => 
+  performanceLogger.log('debug', message, data);
+
+export const logInfo = (message: string, data?: any) => 
+  performanceLogger.log('info', message, data);
+
+export const logWarning = (message: string, data?: any) => 
+  performanceLogger.log('warning', message, data);
+
+export const logError = (message: string, data?: any) => 
+  performanceLogger.log('error', message, data);
+
+export const logPerformance = (message: string, data?: any) => 
+  performanceLogger.log('performance', message, data);
+
+// These functions are used in other components
+export const getPerformanceReport = () => 
+  performanceLogger.getPerformanceReport();
+
+export const getBottlenecks = (threshold?: number) => 
+  performanceLogger.getBottlenecks(threshold);
+
+export const clearPerformanceLogs = () => 
+  performanceLogger.clearLogs();
+
+// Address caching helpers
+export const cacheAddress = (address: string, coordinates: [number, number]) => 
+  performanceLogger.cacheAddress(address, coordinates);
+
+export const getCachedAddress = (address: string) => 
+  performanceLogger.getCachedAddress(address);
+
+export const clearAddressCache = () => 
+  performanceLogger.clearAddressCache();
+
+export const getCacheStatus = () =>
+  performanceLogger.getCacheStatus();
+
+// Trip number and driver processing helpers
+export const logTripNumberProcessing = (orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any) => {
+  if (DEBUG_MODE) {
+    performanceLogger.log('debug', `Trip Number Processing [${stage}] for ${orderId}`, {
+      rawValue,
+      processedValue,
+      decisions
+    });
+  }
+  return null;
 };
 
-// Get a summary of the performance data
-export const getPerformanceSummary = () => {
-  return performanceLogger.getSummary();
+export const logDriverProcessing = (orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any) => {
+  if (DEBUG_MODE) {
+    performanceLogger.log('debug', `Driver Processing [${stage}] for ${orderId}`, {
+      rawValue,
+      processedValue,
+      decisions
+    });
+  }
+  return null;
 };
 
 // New batch operation helpers
