@@ -24,7 +24,7 @@ export const getFieldValidationStatus = (
     return 'warning';
   }
   
-  return 'valid'; // Changed from 'success' to 'valid' to match FieldValidationStatus type
+  return 'valid'; // Using 'valid' to match FieldValidationStatus type
 };
 
 // Get field status including both validation state and message

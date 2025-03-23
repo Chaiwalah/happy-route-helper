@@ -1,50 +1,38 @@
 
-/**
- * Type definitions for order verification
- */
-
 import { DeliveryOrder } from '@/utils/csvParser';
 
-/**
- * Properties for useOrderVerification hook
- */
-export interface UseOrderVerificationProps {
-  orders: DeliveryOrder[];
-  onOrdersVerified: (updatedOrders: DeliveryOrder[]) => void;
-}
+export type FieldValidationStatus = 'valid' | 'warning' | 'error';
 
-/**
- * Possible validation statuses for a field
- */
-export type FieldValidationStatus = 'valid' | 'warning' | 'error' | 'success';
-
-/**
- * Field status including validation state and message
- */
 export interface FieldStatus {
   status: FieldValidationStatus;
   message: string;
 }
 
-/**
- * Return type for useOrderVerification hook
- */
-export interface UseOrderVerificationReturn {
-  ordersWithIssues: DeliveryOrder[];
+export type EditingField = 'driver' | 'tripNumber' | 'NONE';
+
+export interface OrderVerificationState {
+  orders: DeliveryOrder[];
   selectedOrderId: string | null;
-  setSelectedOrderId: (id: string | null) => void;
-  selectedOrder: DeliveryOrder | null;
-  editingField: string | null;
+  editingField: EditingField;
   fieldValue: string;
-  isSavingField: boolean;
   validationMessage: string | null;
-  suggestedTripNumbers: string[];
-  suggestedDrivers: string[];
-  handleFieldEdit: (field: string, value: string) => void;
-  handleFieldValueChange: (value: string) => void;
-  handleFieldUpdate: () => void;
-  handleOrdersApprove: () => void;
-  getOrderValidationStatus: (order: DeliveryOrder | null) => 'valid' | 'warning' | 'error';
-  getFieldValidationStatus: (fieldName: string, value: string | null) => FieldValidationStatus;
-  updateOrder: (orderId: string, fieldName: string, value: string) => Promise<boolean>;
+  isModified: boolean;
+  isProcessing: boolean;
+  processingProgress: number;
+  ordersWithIssues: string[];
+  allOrdersValid: boolean;
+}
+
+export interface OrderValidationIssue {
+  id: string;
+  driverIssue: boolean;
+  tripNumberIssue: boolean;
+}
+
+export type OrderFieldValue = string | null | undefined;
+
+export interface FieldUpdate {
+  orderId: string;
+  field: 'driver' | 'tripNumber';
+  value: string;
 }
