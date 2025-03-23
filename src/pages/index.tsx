@@ -6,7 +6,7 @@ import { DeliveryOrder } from '@/utils/csvParser';
 import { Issue } from '@/utils/invoiceTypes';
 import { detectIssues } from '@/utils/issueDetector';
 import { removeOrdersWithMissingTripNumbers } from '@/utils/routeOrganizer';
-import { DataVerification } from '@/components/data-verification/DataVerification';
+import { DataVerification } from '@/components/DataVerification';
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 
