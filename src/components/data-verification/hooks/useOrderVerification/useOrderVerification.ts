@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useMemo } from 'react';
 import { DeliveryOrder } from '@/utils/csvParser';
 import { 
@@ -25,7 +26,7 @@ interface UseOrderVerificationProps {
   onOrdersUpdated: (orders: DeliveryOrder[]) => void;
 }
 
-const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerificationProps) => {
+export const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerificationProps) => {
   const [state, setState] = useState<OrderVerificationState>({
     orders: initialOrders,
     selectedOrderId: null,
@@ -49,8 +50,7 @@ const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerifi
       return acc;
     }, {});
     endPerformanceTracking('useOrderVerification.orderValidationStatuses', {
-      orderCount: state.orders.length,
-      statuses
+      orderCount: state.orders.length
     });
     return statuses;
   }, [state.orders]);
@@ -60,8 +60,7 @@ const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerifi
     startPerformanceTracking('useOrderVerification.ordersWithIssues');
     const issues = state.orders.filter(order => orderValidationStatuses[order.id] !== 'valid').map(order => order.id);
     endPerformanceTracking('useOrderVerification.ordersWithIssues', {
-      issueCount: issues.length,
-      issues
+      issueCount: issues.length
     });
     return issues;
   }, [state.orders, orderValidationStatuses]);
@@ -158,7 +157,7 @@ const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerifi
       }));
     };
     
-    const isValid = validateField(state.editingField, state.fieldValue, setValidationMessage, state.selectedOrderId);
+    const isValid = validateField(state.editingField, state.fieldValue, setValidationMessage);
     
     if (!isValid) {
       logInfo('Field validation failed', { 
@@ -191,16 +190,16 @@ const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerifi
         validationMessage: null,
         isModified: false
       };
-    }, () => {
-      // After state is updated, call the onOrdersUpdated callback
-      onOrdersUpdated(state.orders);
-      toast({
-        title: "Field updated",
-        description: `Successfully updated ${state.editingField} for order ${state.selectedOrderId}`,
-      });
-      endPerformanceTracking('useOrderVerification.saveFieldValue', { success: true });
     });
-  }, [state.selectedOrderId, state.editingField, state.fieldValue, onOrdersUpdated, toast]);
+    
+    // After state is updated, call the onOrdersUpdated callback
+    onOrdersUpdated(state.orders);
+    toast({
+      title: "Field updated",
+      description: `Successfully updated ${state.editingField} for order ${state.selectedOrderId}`,
+    });
+    endPerformanceTracking('useOrderVerification.saveFieldValue', { success: true });
+  }, [state.selectedOrderId, state.editingField, state.fieldValue, state.orders, onOrdersUpdated, toast]);
   
   // Ensure we're using the correct adapter methods for validation
   const dependencies = {
@@ -222,5 +221,3 @@ const useOrderVerification = ({ initialOrders, onOrdersUpdated }: UseOrderVerifi
     dependencies
   };
 };
-
-export default useOrderVerification;
