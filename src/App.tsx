@@ -10,7 +10,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { PerformanceMonitor } from "@/components/PerformanceMonitor";
 
 // Lazy load components for better performance
-const Index = lazy(() => import("./pages/Index"));
+const Index = lazy(() => import("./pages/index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Create query client with optimized settings

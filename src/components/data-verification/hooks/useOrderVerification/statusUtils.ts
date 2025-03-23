@@ -10,6 +10,21 @@ import { isNoiseOrTestTripNumber } from '@/utils/routeOrganizer';
 import { startPerformanceTracking, endPerformanceTracking } from '@/utils/performanceLogger';
 
 /**
+ * Process a field value to ensure it's a properly formatted string
+ */
+export const processFieldValue = (value: any): string => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  
+  return String(value);
+};
+
+/**
  * Get validation status for an entire order
  */
 export const getOrderValidationStatus = (

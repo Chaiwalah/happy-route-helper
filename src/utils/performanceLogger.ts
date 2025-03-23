@@ -363,4 +363,4 @@ export const startBatchLogging = () =>
 export const endBatchLogging = () => 
   performanceLogger.endBatchOperation();
 
-// Debug mode control
+// Removed duplicate DEBUG_MODE constant
