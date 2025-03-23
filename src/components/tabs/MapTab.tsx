@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -208,14 +209,14 @@ export const MapTab: React.FC<MapTabProps> = ({ orders }) => {
         <div className="space-y-2">
           <Label htmlFor="driver-select">Filter by Driver</Label>
           <Select
-            value={selectedDriver || ""}
-            onValueChange={(value) => setSelectedDriver(value || null)}
+            value={selectedDriver || "all-drivers"}
+            onValueChange={(value) => setSelectedDriver(value === "all-drivers" ? null : value)}
           >
             <SelectTrigger id="driver-select" className="w-[200px]">
               <SelectValue placeholder="All Drivers" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Drivers</SelectItem>
+              <SelectItem value="all-drivers">All Drivers</SelectItem>
               {drivers.map(driver => (
                 <SelectItem key={driver} value={driver}>{driver}</SelectItem>
               ))}
