@@ -116,18 +116,26 @@ export const isPlaceholderValue = (value: any): boolean => {
   const normalizedValue = normalizeFieldValue(value);
   const trimmedLower = normalizedValue.trim().toLowerCase();
   
-  // Check against known placeholder values
+  // Check against known placeholder values - EXPANDED list for more thorough checks
   const isPlaceholder = 
     trimmedLower === 'n/a' || 
     trimmedLower === 'na' || 
     trimmedLower === 'none' || 
     trimmedLower === 'null' ||
     trimmedLower === 'undefined' ||
-    trimmedLower === '-';
+    trimmedLower === '-' ||
+    trimmedLower === 'placeholder' ||
+    trimmedLower === 'pending' ||
+    trimmedLower === 'tbd' ||
+    trimmedLower === 'to be determined' ||
+    trimmedLower === 'not applicable' ||
+    trimmedLower === 'not assigned' ||
+    trimmedLower === 'not available';
   
   endPerformanceTracking(operationId, { 
     result: isPlaceholder, 
     reason: isPlaceholder ? 'placeholder value' : 'not a placeholder',
+    value: trimmedLower,
     normalizedValue
   });
   
@@ -156,11 +164,20 @@ export const isUnassignedDriver = (value: any): boolean => {
   
   // Only return true if the value is explicitly "Unassigned"
   const normalizedValue = normalizeFieldValue(value);
-  const isUnassigned = normalizedValue.trim().toLowerCase() === 'unassigned';
+  const trimmedLower = normalizedValue.trim().toLowerCase();
+  
+  // EXPANDED to cover all unassigned variations
+  const isUnassigned = 
+    trimmedLower === 'unassigned' || 
+    trimmedLower === 'not assigned' ||
+    trimmedLower === 'no driver' || 
+    trimmedLower === 'no_driver' ||
+    trimmedLower === 'nodriver';
   
   endPerformanceTracking(operationId, { 
     result: isUnassigned, 
     reason: isUnassigned ? 'explicitly unassigned' : 'not unassigned',
+    value: trimmedLower,
     normalizedValue
   });
   
@@ -181,7 +198,9 @@ export const isMissingDriver = (value: any): boolean => {
   
   endPerformanceTracking(operationId, { 
     result: isMissing, 
-    reason: isMissing ? 'null/undefined/empty' : 'has value'
+    reason: isMissing ? 'null/undefined/empty' : 'has value',
+    valueType: typeof value,
+    valuePreview: value === null ? 'null' : String(value).substring(0, 50)
   });
   
   return isMissing;
@@ -208,7 +227,9 @@ export const isDriverNeedsVerification = (value: any): boolean => {
   
   endPerformanceTracking(operationId, { 
     result: needsVerification, 
-    reason: needsVerification ? 'placeholder value' : 'valid driver'
+    reason: needsVerification ? 'placeholder value' : 'valid driver',
+    valueType: typeof value,
+    valuePreview: value === null ? 'null' : String(value).substring(0, 50)
   });
   
   return needsVerification;
@@ -470,13 +491,13 @@ export const validateField = (
       );
       
       endPerformanceTracking(operationId, { 
-        valid: true, // Changed from false to true
+        valid: true,
         reason: 'unassigned driver but allowed',
         normalizedValue,
         status: 'WARNING'
       });
       
-      return true; // Changed from false to true
+      return true;
     }
     
     // Check for driver that needs verification (N/A, None, etc.)
@@ -577,7 +598,7 @@ export const getFieldStatus = (fieldName: string, value: any): {
     };
   }
   
-  // Field-specific validations
+  // Trip Number specific validation
   if (fieldName === 'tripNumber') {
     const normalizedValue = normalizeFieldValue(value);
     const [isNoise, needsVerification] = isNoiseOrTestTripNumber(normalizedValue);
@@ -585,7 +606,7 @@ export const getFieldStatus = (fieldName: string, value: any): {
     if (isNoise) {
       return {
         status: 'NOISE',
-        message: 'This appears to be a test/noise value'
+        message: 'Trip Number appears to be a test/noise value'
       };
     }
     
@@ -596,7 +617,7 @@ export const getFieldStatus = (fieldName: string, value: any): {
       };
     }
     
-    // Check format
+    // Validate proper trip number format
     const tripNumberPattern = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/;
     const formatValid = tripNumberPattern.test(normalizedValue.trim());
     
@@ -608,6 +629,7 @@ export const getFieldStatus = (fieldName: string, value: any): {
     }
   }
   
+  // Driver specific validation
   if (fieldName === 'driver') {
     if (isUnassignedDriver(value)) {
       return {
@@ -617,15 +639,9 @@ export const getFieldStatus = (fieldName: string, value: any): {
     }
   }
   
-  // Default - field is valid
+  // Valid field
   return {
     status: 'VALID',
-    message: ''
+    message: 'Valid value'
   };
 };
-
-/**
- * Exports the legacy processFieldValue name for backward compatibility
- * but uses the new normalizeFieldValue implementation
- */
-export const processFieldValue = normalizeFieldValue;

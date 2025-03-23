@@ -1,16 +1,26 @@
 
+/**
+ * Type definitions for order verification
+ */
+
 import { DeliveryOrder } from '@/utils/csvParser';
 
-// Define the validation status type for field-level validation
-export type FieldValidationStatus = 'valid' | 'warning' | 'error' | 'success' | 'info' | 'none';
-
-// Interface for the order verification hook
+/**
+ * Properties for useOrderVerification hook
+ */
 export interface UseOrderVerificationProps {
   orders: DeliveryOrder[];
-  onOrdersVerified: (verifiedOrders: DeliveryOrder[]) => void;
+  onOrdersVerified: (updatedOrders: DeliveryOrder[]) => void;
 }
 
-// Interface for the order verification hook return value
+/**
+ * Possible validation statuses for a field
+ */
+export type FieldValidationStatus = 'valid' | 'warning' | 'error';
+
+/**
+ * Return type for useOrderVerification hook
+ */
 export interface UseOrderVerificationReturn {
   ordersWithIssues: DeliveryOrder[];
   selectedOrderId: string | null;
@@ -26,7 +36,7 @@ export interface UseOrderVerificationReturn {
   handleFieldValueChange: (value: string) => void;
   handleFieldUpdate: () => void;
   handleOrdersApprove: () => void;
-  getOrderValidationStatus: (order: DeliveryOrder) => 'valid' | 'warning' | 'error';
-  getFieldValidationStatus: (fieldName: string, value: string) => FieldValidationStatus;
+  getOrderValidationStatus: (order: DeliveryOrder | null) => 'valid' | 'warning' | 'error';
+  getFieldValidationStatus: (fieldName: string, value: string | null) => FieldValidationStatus;
   updateOrder: (orderId: string, fieldName: string, value: string) => Promise<boolean>;
 }

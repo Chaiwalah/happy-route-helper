@@ -1,3 +1,4 @@
+
 import { DeliveryOrder } from './csvParser';
 import { 
   startPerformanceTracking, 
@@ -12,7 +13,10 @@ export const isNoiseOrTestTripNumber = (
   order?: DeliveryOrder
 ): [boolean, boolean] => {
   const orderId = order?.id || 'unknown-order';
-  startPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { tripNumber });
+  startPerformanceTracking(`isNoiseOrTestTripNumber.${orderId}`, { 
+    tripNumber,
+    tripNumberType: typeof tripNumber 
+  });
   
   // Case 1: Null or undefined trip number - it's missing but not noise
   if (tripNumber === null || tripNumber === undefined) {
@@ -61,17 +65,28 @@ export const isNoiseOrTestTripNumber = (
     return [false, true]; // Not noise, but missing
   }
   
-  // Case 3: Known noise/test values
+  // Case 3: Known noise/test values - EXPANDED for comprehensive detection
   const noiseValues = [
     '24', '25', 'test', 'noise', 'demo', 'sample', 
     'example', 'testing', 'temp', 'temporary', 
-    't1', 't2', 't3', 'x1', 'x2', 'x3'
+    't1', 't2', 't3', 'x1', 'x2', 'x3',
+    'testtrip', 'testroute', 'testnumber',
+    'test123', 'test456', 'test789',
+    'test-trip', 'test-route', 'test-number',
+    'trip-test', 'route-test', 'number-test',
+    'dummy', 'dummy-trip', 'dummy-route',
+    'not-used', 'not-real', 'fake',
+    'debug', 'debugtrip', 'debug-trip'
   ];
   
   // Check if the trip number is a known noise value
   if (noiseValues.includes(trimmedValue) || 
-      /^test[_-]?\d+$/i.test(trimmedValue) || // test-123, test_456, etc.
-      /^t[_-]?\d+$/i.test(trimmedValue)) {   // t-123, t_456, etc.
+      /^test[_\-]?\d+$/i.test(trimmedValue) || // test-123, test_456, etc.
+      /^t[_\-]?\d+$/i.test(trimmedValue) ||    // t-123, t_456, etc.
+      /^demo[_\-]?\d+$/i.test(trimmedValue) || // demo-123, demo_456, etc.
+      /^x[_\-]?\d+$/i.test(trimmedValue) ||    // x-123, x_456, etc.
+      /^fake[_\-]?\d+$/i.test(trimmedValue) || // fake-123, fake_456, etc.
+      /^debug[_\-]?\d+$/i.test(trimmedValue)) {// debug-123, debug_456, etc.
     
     logDebug(`Trip number "${tripNumber}" identified as noise value`);
     
@@ -103,7 +118,12 @@ export const isNoiseOrTestTripNumber = (
   }
   
   // Case 4: Placeholder values (N/A, None, etc.) - they're missing but not noise
-  const placeholderValues = ['n/a', 'na', 'none', 'null', 'undefined', '-'];
+  const placeholderValues = [
+    'n/a', 'na', 'none', 'null', 'undefined', '-',
+    'placeholder', 'pending', 'tbd', 'to be determined',
+    'not applicable', 'not assigned', 'not available'
+  ];
+  
   if (placeholderValues.includes(trimmedValue)) {
     logDebug(`Trip number "${tripNumber}" identified as placeholder (N/A)`);
     
@@ -134,8 +154,17 @@ export const isNoiseOrTestTripNumber = (
     return [false, true]; // Not noise, but needs verification
   }
   
-  // Case 5: Valid trip number format check
-  const validFormat = /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/.test(trimmedValue);
+  // Case 5: Valid trip number format check - EXPANDED formats
+  const validFormat = (
+    // Standard formats with letters followed by numbers (with optional separators)
+    /^([A-Za-z]{1,3}[\-\s]?\d{3,8}|\d{3,8})$/.test(trimmedValue) ||
+    // Format like "Trip #12345" or "Route #12345"
+    /^(trip|route|tr)[\s#]+\d{3,8}$/i.test(trimmedValue) ||
+    // Format with slashes like TR/12345
+    /^[A-Za-z]{1,3}\/\d{3,8}$/.test(trimmedValue) ||
+    // Format with underscores like TR_12345
+    /^[A-Za-z]{1,3}_\d{3,8}$/.test(trimmedValue)
+  );
   
   if (!validFormat) {
     logDebug(`Trip number "${tripNumber}" has unusual format, flagging for verification`);

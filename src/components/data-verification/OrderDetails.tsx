@@ -76,24 +76,17 @@ export function OrderDetails({
     return result;
   }
 
-  // Measure processing of values
-  startPerformanceTracking('OrderDetails.processValues', { orderId: selectedOrder.id });
-  
   // Safely extract and process field values, properly handling null values
   // For nulls, we'll display "Missing" in the UI but keep them as null in the data
-  
-  // Process Trip Number - may be null, object, or string
   const tripNumberValue = selectedOrder.tripNumber === null 
     ? "Missing" 
     : normalizeFieldValue(selectedOrder.tripNumber);
   
-  // Process Driver - may be null, object, string, or "Unassigned"
   const rawDriverValue = selectedOrder.driver;
   const driverValue = rawDriverValue === null 
     ? "Missing" 
     : normalizeFieldValue(rawDriverValue);
   
-  // Process other fields with standard normalization
   const pickupValue = selectedOrder.pickup === null 
     ? "Missing" 
     : normalizeFieldValue(selectedOrder.pickup);
@@ -110,25 +103,17 @@ export function OrderDetails({
     ? "Missing" 
     : normalizeFieldValue(selectedOrder.exDeliveryTime);
   
-  endPerformanceTracking('OrderDetails.processValues', { orderId: selectedOrder.id });
-  
-  // Validation checks - measure performance
-  startPerformanceTracking('OrderDetails.validateFields', { orderId: selectedOrder.id });
-  
-  // Validation checks using our unified validation approach
+  // Validation checks
   const isTripNumberNull = selectedOrder.tripNumber === null;
   const isTripNumberEmpty = !isTripNumberNull && isEmptyValue(selectedOrder.tripNumber);
   
-  // Use the new tuple return value from isNoiseOrTestTripNumber
+  // Use the updated tuple return value from isNoiseOrTestTripNumber
   const [isTripNumberNoise, isTripNumberMissing] = selectedOrder.tripNumber 
     ? isNoiseOrTestTripNumber(normalizeFieldValue(selectedOrder.tripNumber))
     : [false, true];
     
   // Use the isNoise flag on the order if it exists
   const isOrderMarkedAsNoise = selectedOrder.isNoise || false;
-  
-  const isTripNumberNA = !isTripNumberNull && !isTripNumberEmpty && 
-    ['n/a', 'na', 'none'].includes(normalizeFieldValue(selectedOrder.tripNumber).toLowerCase());
   
   // Driver validation checks
   const isDriverNull = selectedOrder.driver === null;
@@ -139,48 +124,6 @@ export function OrderDetails({
   // Safe access to missingFields with default empty array
   const missingFields = selectedOrder.missingFields || [];
   
-  endPerformanceTracking('OrderDetails.validateFields', { 
-    isTripNumberNull,
-    isTripNumberEmpty,
-    isTripNumberNoise,
-    isTripNumberMissing,
-    isTripNumberNA,
-    isDriverNull,
-    isDriverEmpty,
-    isDriverUnassigned,
-    missingFieldsCount: missingFields.length
-  });
-  
-  // Log trip number and driver validation for this render
-  logTripNumberProcessing(
-    selectedOrder.id,
-    'UI-Render',
-    selectedOrder.tripNumber,
-    tripNumberValue,
-    {
-      isTripNumberNull,
-      isTripNumberEmpty,
-      isTripNumberNoise,
-      isTripNumberMissing,
-      isTripNumberNA,
-      isOrderMarkedAsNoise,
-      inMissingFields: missingFields.includes('tripNumber')
-    }
-  );
-  
-  logDriverProcessing(
-    selectedOrder.id,
-    'UI-Render',
-    selectedOrder.driver,
-    driverValue,
-    {
-      isDriverNull,
-      isDriverEmpty,
-      isDriverUnassigned,
-      inMissingFields: missingFields.includes('driver')
-    }
-  );
-  
   // Enhanced debug information with structured data
   logPerformance(`OrderDetails rendered for ${selectedOrder.id}`, {
     tripNumber: {
@@ -189,7 +132,6 @@ export function OrderDetails({
       isEmpty: isTripNumberEmpty,
       isNoise: isTripNumberNoise || isOrderMarkedAsNoise,
       isMissing: isTripNumberMissing || missingFields.includes('tripNumber'),
-      isNA: isTripNumberNA
     },
     driver: {
       value: driverValue,
@@ -238,7 +180,6 @@ export function OrderDetails({
                   isEditing={editingField === 'tripNumber'}
                   isError={isTripNumberNull || 
                            isTripNumberEmpty || 
-                           isTripNumberNA ||
                            missingFields.includes('tripNumber')}
                   isNoise={isTripNumberNoise || isOrderMarkedAsNoise}
                   isSaving={isSavingField}
@@ -280,7 +221,7 @@ export function OrderDetails({
                   validationStatus={getFieldValidationStatus('driver', 
                     editingField === 'driver' ? fieldValue : selectedOrder.driver)}
                   validationMessage={isDriverUnassigned ? 
-                    "Driver is set to 'Unassigned'" : 
+                    "Driver is set to 'Unassigned' but valid" : 
                     "Driver names should be consistent"}
                   onEdit={onFieldEdit}
                   onValueChange={onFieldValueChange}
@@ -289,8 +230,8 @@ export function OrderDetails({
               </div>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-xs">
-              <p>Driver names should be consistent across orders to properly attribute deliveries. 
-              While 'Unassigned' is acceptable, consider assigning specific drivers for better route planning.</p>
+              <p>"Unassigned" is a valid driver value, though assigning specific drivers improves route planning. 
+              Placeholder values like "N/A" or "none" need verification.</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

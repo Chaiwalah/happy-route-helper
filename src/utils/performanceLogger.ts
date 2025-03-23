@@ -1,7 +1,7 @@
 
 /**
- * Performance and Debug Logger
- * Optimized for minimal performance impact
+ * Performance and Debug Logger - Optimized Version
+ * Minimizes performance impact while providing comprehensive logging
  */
 
 type LogLevel = 'debug' | 'info' | 'warning' | 'error' | 'performance';
@@ -14,6 +14,11 @@ interface PerformanceEntry {
   metadata?: Record<string, any>;
 }
 
+// Configuration
+const MAX_ENTRIES = 1000; // Maximum entries to keep in memory
+const PURGE_THRESHOLD = 800; // When to purge old entries
+const DEBUG_MODE = false; // Set to true to enable verbose debugging
+
 class PerformanceLogger {
   private static instance: PerformanceLogger;
   private enabled: boolean = true;
@@ -23,8 +28,13 @@ class PerformanceLogger {
   private addressCache: Map<string, [number, number]> = new Map(); // Cache for geocoded addresses
   private inBatchOperation: boolean = false;
   private batchedLogs: string[] = [];
-  private maxEntries: number = 500; // Limit stored entries for memory management
-
+  private operationCounters: Map<string, number> = new Map(); // Count operations by type
+  private cacheCounts = { hits: 0, misses: 0 }; // Track cache performance
+  
+  // Performance data
+  private startupTime: number = performance.now();
+  private totalProcessingTime: number = 0;
+  
   private constructor() {}
 
   public static getInstance(): PerformanceLogger {
@@ -49,11 +59,15 @@ class PerformanceLogger {
 
   public endBatchOperation(): void {
     this.inBatchOperation = false;
-    // Log all batched logs at once for better performance
-    if (this.batchedLogs.length > 0) {
+    
+    // Only log if there are a reasonable number of logs
+    if (this.batchedLogs.length > 0 && this.batchedLogs.length < 500) {
       console.log(this.batchedLogs.join('\n'));
-      this.batchedLogs = [];
+    } else if (this.batchedLogs.length >= 500) {
+      console.log(`${this.logPrefix} [BATCH] ${this.batchedLogs.length} logs suppressed to prevent console flooding`);
     }
+    
+    this.batchedLogs = [];
   }
 
   public startOperation(operation: string, metadata?: Record<string, any>): void {
@@ -62,18 +76,26 @@ class PerformanceLogger {
     const startTime = performance.now();
     this.operations.set(operation, startTime);
     
-    // Manage entry count to prevent memory leaks
-    if (this.performanceEntries.length >= this.maxEntries) {
-      this.performanceEntries = this.performanceEntries.slice(-Math.floor(this.maxEntries / 2));
-    }
-
-    this.performanceEntries.push({
-      operation,
-      startTime,
-      metadata
-    });
+    // Increment operation counter
+    const count = this.operationCounters.get(operation) || 0;
+    this.operationCounters.set(operation, count + 1);
     
-    this.logMessage(`⏱️ Starting: ${operation}`, metadata || '');
+    // Only store entry if we're under the limit
+    if (this.performanceEntries.length < MAX_ENTRIES) {
+      this.performanceEntries.push({
+        operation,
+        startTime,
+        metadata
+      });
+    } else if (this.performanceEntries.length >= PURGE_THRESHOLD) {
+      // Purge old entries when we hit threshold
+      this.performanceEntries = this.performanceEntries.slice(-Math.floor(MAX_ENTRIES / 2));
+    }
+    
+    // Only log at debug level for significant operations
+    if (DEBUG_MODE || !this.isHighVolumeOperation(operation)) {
+      this.logMessage(`⏱️ Starting: ${operation}`, metadata || '');
+    }
   }
 
   public endOperation(operation: string, additionalMetadata?: Record<string, any>): number {
@@ -90,6 +112,11 @@ class PerformanceLogger {
     const duration = endTime - startTime;
     this.operations.delete(operation);
     
+    // Only track total processing time for main operations
+    if (this.isMainOperation(operation)) {
+      this.totalProcessingTime += duration;
+    }
+    
     // Find the entry and update it (only if we're storing it)
     const entry = this.performanceEntries.find(e => 
       e.operation === operation && e.endTime === undefined
@@ -103,9 +130,27 @@ class PerformanceLogger {
       }
     }
     
-    this.logMessage(`⏱️ Completed: ${operation} in ${duration.toFixed(2)}ms`, additionalMetadata || '');
+    // Only log at debug level for significant operations or slow operations
+    if (DEBUG_MODE || !this.isHighVolumeOperation(operation) || duration > 100) {
+      this.logMessage(`⏱️ Completed: ${operation} in ${duration.toFixed(2)}ms`, additionalMetadata || '');
+    }
     
     return duration;
+  }
+
+  // Helper to identify high-volume operations that would flood logs
+  private isHighVolumeOperation(operation: string): boolean {
+    return operation.includes('processOrder') || 
+           operation.includes('validateField') || 
+           operation.includes('normalizeFieldValue') ||
+           operation.includes('isEmptyValue');
+  }
+  
+  // Helper to identify main operations for total time tracking
+  private isMainOperation(operation: string): boolean {
+    return operation.startsWith('calculateDistances') ||
+           operation.startsWith('processOrdersForVerification') ||
+           operation.startsWith('organizeOrdersIntoRoutes');
   }
 
   private logMessage(message: string, data: any, level: LogLevel = 'debug'): void {
@@ -128,17 +173,17 @@ class PerformanceLogger {
   public log(level: LogLevel, message: string, data?: any): void {
     if (!this.enabled) return;
     
-    const timestamp = new Date().toISOString();
-    const prefix = `${this.logPrefix} [${timestamp}] [${level.toUpperCase()}]`;
-    
-    // Skip non-critical logs when in batch operation for performance
+    // Skip low-priority logs when in batch mode
     if (this.inBatchOperation && (level === 'debug' || level === 'info')) {
       return;
     }
     
+    const timestamp = new Date().toISOString();
+    const prefix = `${this.logPrefix} [${timestamp}] [${level.toUpperCase()}]`;
+    
     switch (level) {
       case 'debug':
-        console.log(`${prefix} ${message}`, data || '');
+        if (DEBUG_MODE) console.log(`${prefix} ${message}`, data || '');
         break;
       case 'info':
         console.info(`${prefix} ${message}`, data || '');
@@ -155,40 +200,28 @@ class PerformanceLogger {
     }
   }
 
-  // Optimized specialized logging methods
-  public logTripNumberProcessing(orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any): void {
-    if (!this.enabled || this.inBatchOperation) return;
-    
-    this.log('debug', `Trip Number Processing [${stage}] for ${orderId}`, {
-      rawValue,
-      processedValue,
-      decisions
-    });
-  }
-
-  public logDriverProcessing(orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any): void {
-    if (!this.enabled || this.inBatchOperation) return;
-    
-    this.log('debug', `Driver Processing [${stage}] for ${orderId}`, {
-      rawValue,
-      processedValue,
-      decisions
-    });
-  }
-
   // Optimized address caching methods
   public cacheAddress(address: string, coordinates: [number, number]): void {
     this.addressCache.set(address, coordinates);
-    if (!this.inBatchOperation) {
+    this.cacheCounts.hits++;
+    
+    if (DEBUG_MODE && !this.inBatchOperation) {
       this.log('debug', `Address cached`, { address, coordinates });
     }
   }
 
   public getCachedAddress(address: string): [number, number] | undefined {
     const result = this.addressCache.get(address);
-    if (result && !this.inBatchOperation) {
-      this.log('debug', `Cache hit for address`, { address });
+    
+    if (result) {
+      this.cacheCounts.hits++;
+      if (DEBUG_MODE && !this.inBatchOperation) {
+        this.log('debug', `Cache hit for address`, { address });
+      }
+    } else {
+      this.cacheCounts.misses++;
     }
+    
     return result;
   }
 
@@ -198,13 +231,40 @@ class PerformanceLogger {
     this.log('info', `Address cache cleared`, { entriesCleared: cacheSize });
   }
 
-  public getPerformanceReport(): { totalTime: number, entries: PerformanceEntry[] } {
+  // Performance reporting methods
+  public getPerformanceReport(): { 
+    totalTime: number,
+    totalProcessingTime: number,
+    elapsedTime: number,
+    operations: Record<string, number>,
+    cachePerformance: { hits: number, misses: number, hitRatio: number },
+    entries: PerformanceEntry[]
+  } {
     const totalTime = this.performanceEntries.reduce((sum, entry) => {
       return sum + (entry.duration || 0);
     }, 0);
     
+    const elapsedTime = performance.now() - this.startupTime;
+    const operations: Record<string, number> = {};
+    
+    this.operationCounters.forEach((count, operation) => {
+      operations[operation] = count;
+    });
+    
+    const cacheHitRatio = this.cacheCounts.hits + this.cacheCounts.misses === 0 
+      ? 0 
+      : this.cacheCounts.hits / (this.cacheCounts.hits + this.cacheCounts.misses);
+    
     return {
       totalTime,
+      totalProcessingTime: this.totalProcessingTime,
+      elapsedTime,
+      operations,
+      cachePerformance: {
+        hits: this.cacheCounts.hits,
+        misses: this.cacheCounts.misses,
+        hitRatio: cacheHitRatio
+      },
       entries: [...this.performanceEntries]
     };
   }
@@ -218,6 +278,21 @@ class PerformanceLogger {
   public clearLogs(): void {
     this.performanceEntries = [];
     this.operations.clear();
+    this.operationCounters.clear();
+  }
+  
+  // Get cache size and stats
+  public getCacheStatus(): { size: number, hits: number, misses: number, hitRatio: number } {
+    const hitRatio = this.cacheCounts.hits + this.cacheCounts.misses === 0 
+      ? 0 
+      : this.cacheCounts.hits / (this.cacheCounts.hits + this.cacheCounts.misses);
+      
+    return {
+      size: this.addressCache.size,
+      hits: this.cacheCounts.hits,
+      misses: this.cacheCounts.misses,
+      hitRatio
+    };
   }
 }
 
@@ -232,10 +307,18 @@ export const endPerformanceTracking = (operation: string, additionalMetadata?: R
   performanceLogger.endOperation(operation, additionalMetadata);
 
 export const logTripNumberProcessing = (orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any) => 
-  performanceLogger.logTripNumberProcessing(orderId, stage, rawValue, processedValue, decisions);
+  DEBUG_MODE ? performanceLogger.log('debug', `Trip Number Processing [${stage}] for ${orderId}`, {
+    rawValue,
+    processedValue,
+    decisions
+  }) : null;
 
 export const logDriverProcessing = (orderId: string, stage: string, rawValue: any, processedValue: any, decisions: any) => 
-  performanceLogger.logDriverProcessing(orderId, stage, rawValue, processedValue, decisions);
+  DEBUG_MODE ? performanceLogger.log('debug', `Driver Processing [${stage}] for ${orderId}`, {
+    rawValue,
+    processedValue,
+    decisions
+  }) : null;
 
 export const logDebug = (message: string, data?: any) => 
   performanceLogger.log('debug', message, data);
@@ -271,9 +354,15 @@ export const getCachedAddress = (address: string) =>
 export const clearAddressCache = () => 
   performanceLogger.clearAddressCache();
 
+export const getCacheStatus = () =>
+  performanceLogger.getCacheStatus();
+
 // New batch operation helpers
 export const startBatchLogging = () => 
   performanceLogger.startBatchOperation();
 
 export const endBatchLogging = () => 
   performanceLogger.endBatchOperation();
+
+// Debug mode control
+const DEBUG_MODE = false; // Set to false in production for better performance

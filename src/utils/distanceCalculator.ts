@@ -18,11 +18,14 @@ import {
 // Type definition for coordinates
 export type Coordinates = [number, number]; // [longitude, latitude]
 
-// Configuration
-const CALCULATION_TIMEOUT = 8000; // 8 seconds (reduced from 10)
-const MAX_RETRIES = 1; // Reduced from 2 for faster processing
-const CONCURRENT_BATCHES = 5; // Increased from 3 
-const BATCH_SIZE = 8; // Increased from 5
+// Configuration - OPTIMIZED PARAMETERS
+const CALCULATION_TIMEOUT = 5000; // 5 seconds (reduced from 8s)
+const MAX_RETRIES = 1; // Keep at 1 for faster processing
+const CONCURRENT_BATCHES = 10; // Increased from 5 for better parallelism
+const BATCH_SIZE = 12; // Increased from 8
+
+// SIMPLE IN-MEMORY CACHING
+const addressCache = new Map<string, Coordinates>();
 
 /**
  * Calculate distances for multiple orders with improved performance
@@ -37,12 +40,22 @@ export const calculateDistances = async (
   // Create a copy of the orders to avoid mutation
   const updatedOrders = [...orders];
   
+  // Prioritize orders that don't have distances yet
+  const ordersToProcess = updatedOrders.map((order, index) => ({ 
+    order, 
+    index,
+    hasDistance: order.distance !== undefined || order.estimatedDistance !== undefined
+  }));
+  
+  // Sort orders to prioritize those without distances
+  ordersToProcess.sort((a, b) => (a.hasDistance === b.hasDistance) ? 0 : a.hasDistance ? 1 : -1);
+  
   // Set up batching with improved concurrency
-  const batches: DeliveryOrder[][] = [];
+  const batches: Array<typeof ordersToProcess> = [];
   
   // Create smaller batches for parallel processing
-  for (let i = 0; i < updatedOrders.length; i += BATCH_SIZE) {
-    batches.push(updatedOrders.slice(i, i + BATCH_SIZE));
+  for (let i = 0; i < ordersToProcess.length; i += BATCH_SIZE) {
+    batches.push(ordersToProcess.slice(i, i + BATCH_SIZE));
   }
   
   logInfo(`Split ${updatedOrders.length} orders into ${batches.length} batches of max ${BATCH_SIZE} orders each`);
@@ -51,6 +64,7 @@ export const calculateDistances = async (
   // Process multiple batches in parallel with a concurrency limit
   for (let i = 0; i < batches.length; i += CONCURRENT_BATCHES) {
     const currentBatches = batches.slice(i, i + CONCURRENT_BATCHES);
+    const batchStartTime = performance.now();
     
     try {
       // Process current set of batches concurrently
@@ -61,12 +75,19 @@ export const calculateDistances = async (
           
           // Process all orders in this batch concurrently
           await Promise.all(
-            batch.map(order => processOrderDistance(order, updatedOrders.length))
+            batch.map(({ order }) => processOrderDistance(order, updatedOrders.length))
           );
           
           endPerformanceTracking(`calculateDistances.processBatch.${batchNumber}`);
         })
       );
+      
+      const batchEndTime = performance.now();
+      logPerformance(`Processed batches ${i+1} to ${Math.min(i+CONCURRENT_BATCHES, batches.length)}`, {
+        processingTimeMs: (batchEndTime - batchStartTime).toFixed(2),
+        batchesProcessed: currentBatches.length,
+        ordersProcessed: currentBatches.reduce((sum, batch) => sum + batch.length, 0)
+      });
     } catch (error) {
       logError(`Error processing batch set ${i / CONCURRENT_BATCHES + 1}:`, error);
     }
@@ -82,7 +103,8 @@ export const calculateDistances = async (
     totalOrders: updatedOrders.length,
     ordersWithDistance: totalWithDistance,
     timeSeconds: totalTimeSeconds.toFixed(2),
-    averageTimePerOrder: (totalTimeSeconds / updatedOrders.length).toFixed(2)
+    averageTimePerOrder: (totalTimeSeconds / updatedOrders.length).toFixed(2),
+    cacheSize: addressCache.size
   });
   
   endBatchLogging(); // End batch operations
@@ -98,17 +120,31 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
   startPerformanceTracking(`processOrderDistance.${order.id}`);
   
   try {
-    // Already has a distance? Skip calculation
+    // Already has a distance? Skip calculation or use depending on settings
     if (order.distance && !isNaN(parseFloat(order.distance.toString()))) {
       order.estimatedDistance = parseFloat(order.distance.toString());
       endPerformanceTracking(`processOrderDistance.${order.id}`, { 
-        result: 'used-existing'
+        result: 'used-existing',
+        value: order.estimatedDistance
       });
       return;
     }
     
     // Try to calculate distance using Mapbox if both pickup and dropoff are available
     if (order.pickup && order.dropoff) {
+      // First check if the exact pickup/dropoff pair is in our local simple cache
+      const cacheKey = `${order.pickup}|${order.dropoff}`.toLowerCase();
+      const cachedDistance = addressCache.get(cacheKey);
+      
+      if (cachedDistance) {
+        order.estimatedDistance = cachedDistance[0]; // Use first element for distance
+        endPerformanceTracking(`processOrderDistance.${order.id}`, { 
+          result: 'cache-hit',
+          value: order.estimatedDistance
+        });
+        return;
+      }
+      
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           startPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`);
@@ -153,8 +189,13 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
             endPerformanceTracking(`calculateRouteDistance.${order.id}`);
             
             if (routeDistance !== null) {
-              order.estimatedDistance = typeof routeDistance === 'number' ? 
+              const finalDistance = typeof routeDistance === 'number' ? 
                 Number(routeDistance.toFixed(1)) : generateDefaultDistance();
+              
+              order.estimatedDistance = finalDistance;
+              
+              // Cache the result for this exact pickup/dropoff pair
+              addressCache.set(cacheKey, [finalDistance, Date.now()]);
               
               endPerformanceTracking(`processOrderDistance.${order.id}.attempt${attempt+1}`);
               endPerformanceTracking(`processOrderDistance.${order.id}`);
@@ -200,7 +241,6 @@ async function processOrderDistance(order: DeliveryOrder, totalOrderCount: numbe
 
 /**
  * Geocode an address with timeout protection
- * Fix for the Type 'unknown' is not assignable to type 'number' error
  */
 async function geocodeWithTimeout(address: string): Promise<Coordinates | null> {
   try {
@@ -236,4 +276,18 @@ async function geocodeWithTimeout(address: string): Promise<Coordinates | null> 
 // Generate a default distance if real calculation fails
 const generateDefaultDistance = (): number => {
   return Math.round((5 + Math.random() * 10) * 10) / 10; // 5-15 miles
+};
+
+// Helper function to clear address cache (exposed for testing/debug)
+export const clearAddressCache = (): void => {
+  addressCache.clear();
+  logInfo(`Address cache cleared`, { previousSize: addressCache.size });
+};
+
+// Helper to get cache statistics (exposed for testing/debug)
+export const getAddressCacheStats = (): { size: number, hitRatio: number } => {
+  return { 
+    size: addressCache.size,
+    hitRatio: 0 // Would need to track this separately
+  };
 };
