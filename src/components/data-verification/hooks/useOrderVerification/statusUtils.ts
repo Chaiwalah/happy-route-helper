@@ -1,4 +1,5 @@
 
+import { DeliveryOrder } from '@/utils/csvParser';
 import { FieldStatus, FieldValidationStatus } from './types';
 
 // Function to process field values - make sure they're strings and handle empty/undefined values
@@ -49,7 +50,7 @@ export const getFieldStatus = (
 };
 
 // Create adapter functions for compatibility with different function signatures
-export const getOrderValidationStatus = (order: DeliveryOrder): FieldValidationStatus => {
+export const getOrderValidationStatus = (order: DeliveryOrder): 'valid' | 'warning' | 'error' => {
   // Implementation depends on your specific validation logic for orders
   // This is a stub that needs to be implemented based on your requirements
   if (!order) return 'error';
